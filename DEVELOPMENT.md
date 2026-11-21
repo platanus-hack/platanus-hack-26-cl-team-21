@@ -34,6 +34,8 @@ Changing the schema: edit the module for that area in `db/src/schema/`, then `np
 
 Open `android/` in Android Studio and run it on the emulator; by default it calls `http://10.0.2.2:3000` (the host's `npm run dev:web`). For another backend: `./gradlew installDebug -PapiBaseUrl=https://...`.
 
+No backend yet? `npm run mock:api` serves the enrollment and upload API v0 on port 4010; see [`tools/mock-api/README.md`](tools/mock-api/README.md).
+
 ## Deploy
 
 Render only deploys from repos you own: set up the personal mirror described in `AGENTS.md` (Deploy notes) and create a Blueprint pointing at `render.yaml`. Migrations run when `olm-web` starts.
