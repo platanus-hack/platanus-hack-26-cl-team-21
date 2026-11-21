@@ -63,7 +63,7 @@ Kotlin. Pairs over BLE, shows device status (battery, storage, recording, sensor
 
 Local setup, commands and gotchas are in [`DEVELOPMENT.md`](./DEVELOPMENT.md).
 
-- **`db/`**: the shared Drizzle ORM schema (`db/src/schema.ts`) and its migrations, imported by `web` and `worker` as `@observatorio/db`. Edit the schema, then run `npm run db:generate` and commit the migration. Only one person generates migrations at a time.
+- **`db/`**: the shared Drizzle ORM schema (one module per area in `db/src/schema/`, re-exported by `db/src/schema.ts`), its migrations and the sensor-series helpers, imported by `web` and `worker` as `@observatorio/db`. Edit the schema, then run `npm run db:generate` and commit the migration. Rules Drizzle can't express (no-overlap constraints, immutability triggers, SQL functions, views) live in custom migrations and are covered by `npm run db:test`. See [`db/README.md`](./db/README.md). Only one person generates migrations at a time.
 - **`web/`**: Next.js 16 (App Router, Cache Components) + Tailwind. It serves as the **API** (`/api/*`: ingestion from Android, protocol config, job enqueueing) and as the **researcher portal** (studies and protocols, timelines, evidence viewer, coverage, CSV/JSON export). Read `web/AGENTS.md` before touching Next.js code: the version has breaking changes. Any route that reads the DB must call `await connection()`.
 - **`worker/`**: a background worker that claims rows from the Postgres `jobs` table (`FOR UPDATE SKIP LOCKED`), dispatches on `job.type` and marks each job `done` or `failed`. This is where the video pipeline runs, because it is slow and needs `ffmpeg`:
   1. **Segment selection:** a headless coding agent (OpenCode or similar), spawned as a subprocess, runs a video-editing skill backed by `ffmpeg`. Guided by the study protocol, it outputs an edit list (EDL) and cut clips of the relevant moments, with some context before and after. Skills live in `worker/skills/`.
@@ -87,7 +87,7 @@ Infrastructure is declared in the `render.yaml` Blueprint: `olm-web` (web, free 
 
 There are two sources of truth:
 
-- **Database tables:** `db/src/schema.ts` (Drizzle).
+- **Database tables:** `db/src/schema/` (Drizzle) plus the custom migrations in `db/migrations/`. Conventions and design notes are in `db/README.md`.
 - **Interchange formats** between firmware, Android, worker and LLM output: the JSON Schemas in `data/schemas/`.
 
 Change either one deliberately and update every consumer in the same PR.
