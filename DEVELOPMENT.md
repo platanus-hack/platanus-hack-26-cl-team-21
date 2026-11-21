@@ -47,3 +47,4 @@ Render only deploys from repos you own: set up the personal mirror described in 
 - Only one person at a time generates migrations (`npm run db:generate`); two parallel `0001_*` files collide in `db/migrations/meta/_journal.json`.
 - On Render's free plan `olm-web` sleeps after ~15 min; the first request takes 30–60 s.
 - CI (`.github/workflows/ci.yml`) runs each job only when the PR touches its files: `web` (lint, build), `db` (migration checks, rule tests, seed), `mock-api` (tests) and `android` (build, lint). Editing the workflow runs them all.
+- `npm install` turns on a pre-push hook (`.githooks/pre-push`) with light versions of the CI checks for the areas the push changes: eslint on changed `web` files, migration checks for `db` and the mock API tests. Android and the web build are left to CI. Skip it with `git push --no-verify`.
