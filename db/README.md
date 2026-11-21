@@ -8,8 +8,9 @@ Schema, migrations and data access shared by `web` and `worker` (Drizzle + Postg
 |---|---|
 | Tables, columns, FKs, `CHECK`, indexes, `UNIQUE` | `src/schema/<area>.ts`, then `npm run db:generate` |
 | What Drizzle can't express: `EXCLUDE` (no-overlap), triggers, SQL functions, views | custom migration (`migrations/0002_db_rules.sql`); to change one, add a new one with `npm run generate -w db -- --custom --name <what>` |
+| Reference rows the app needs in every environment (e.g. the pendant's `sensor_types`) and backfills | hand-written statements appended to the generated migration that needs them, idempotent (`on conflict do nothing`) |
 | Reading/writing sensor series | `src/sensor-data.ts` (`ingestSensorReadings`, `sensorWindowStats`, `sensorDaily`) |
-| Demo data (study `study-eating-001`, protocol `eating-v1`, 3 participants × 2 days) | `src/seed.ts`, run with `npm run db:seed` (idempotent: fixed ids + `on conflict do nothing`) |
+| Demo data (study `study-eating-001`, protocol `eating-v1`, 3 participants × 2 days, unused enrollment codes `EAT-001-P01`..`P03`) | `src/seed.ts`, run with `npm run db:seed` (idempotent: fixed ids + `on conflict do nothing`) |
 | Tests for the database rules | `tests/rules.sql`, run with `npm run db:test` (inside a transaction that is rolled back) |
 
 `drizzle-kit` diffs `schema.ts` against the snapshots, never against the live database, so objects created in the custom migration are left alone. After any change that doesn't touch the schema, `npm run db:generate` must say *No schema changes*.
@@ -22,6 +23,7 @@ Modules in `src/schema/`: `studies` · `protocols` · `participants` (real ident
 |---|---|---|
 | `sensor_sample` | `sensor_series` + `sensor_chunks` / `sensor_hourly` | Written through `ingest_sensor_readings()`; `firmware_version` comes from `sync_batches` |
 | `device_event` | `device_events` (battery level and storage: `device_heartbeats`) | Raw evidence behind derived coverage intervals |
+| Session bundle upload ([ADR 0002](../docs/decisions/0002-contracts-v0.md)) | `sync_batches` + `sync_batch_files` | Upload state machine and declared files; enrollment lives on `participants` (`enrollment_code`, `token_sha256`). Full field mapping in ADR 0002 §7 |
 | `clip_manifest` | `media_assets` | `clip_id` → `id`, `started_at`/`ended_at` → `recorded_from`/`recorded_to`, `storage_uri` → `storage_key`. Only approved clips are uploaded, so a row means `approved_by_participant = true` |
 | `coverage_interval` | `coverage_intervals` | Same statuses |
 | `observation` | `observations` + `observation_evidence` + `pipeline_runs`; read `v_current_observations` | Provenance lives on the run; `human_review_status` comes from the latest review; `sensor_context` is computed with `sensor_window_stats()` |

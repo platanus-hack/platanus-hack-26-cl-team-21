@@ -22,6 +22,13 @@
       "when": 1795288746218,
       "tag": "0002_db_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795298365109,
+      "tag": "0003_enrollment_and_uploads",
+      "breakpoints": true
     }
   ]
 }
