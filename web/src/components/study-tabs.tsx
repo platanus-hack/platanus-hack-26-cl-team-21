@@ -12,6 +12,7 @@ export function StudyTabs({ code }: { code: string }) {
   const tabs = [
     { href: base, label: "Resumen", active: pathname === base },
     { href: `${base}/observations`, label: "Observaciones", active: within(`${base}/observations`) },
+    { href: `${base}/participants`, label: "Participantes", active: pathname === `${base}/participants` || within(`${base}/participants/new`) },
     { href: `${base}/export`, label: "Exportar", active: within(`${base}/export`) },
   ];
   return (
