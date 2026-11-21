@@ -1,23 +1,23 @@
-# Desarrollo
+# Development
 
-| Carpeta | Qué es | Stack |
+| Folder | What | Stack |
 |---|---|---|
-| `web/` | Portal de investigadores + API (`/api/*`) | Next.js, TypeScript |
-| `worker/` | Procesamiento en segundo plano (video, IA) que consume la tabla `jobs` | Node, TypeScript (tsx) |
-| `db/` | Esquema y migraciones compartidos por `web` y `worker` | Drizzle ORM, Postgres |
-| `android/` | App del participante | Kotlin, Jetpack Compose |
-| `render.yaml` | Blueprint de Render: `olm-web`, `olm-worker`, `olm-db` | Render |
+| `web/` | Researcher portal + API (`/api/*`) | Next.js, TypeScript |
+| `worker/` | Background processing (video, AI) that consumes the `jobs` table | Node, TypeScript (tsx) |
+| `db/` | Schema and migrations shared by `web` and `worker` | Drizzle ORM, Postgres |
+| `android/` | Participant app | Kotlin, Jetpack Compose |
+| `render.yaml` | Render Blueprint: `olm-web`, `olm-worker`, `olm-db` | Render |
 
-## Web + worker en local
+## Web + worker locally
 
-Postgres local con Homebrew (una vez):
+Local Postgres with Homebrew (once):
 
 ```bash
 brew install postgresql@17 && brew services start postgresql@17
 "$(brew --prefix postgresql@17)/bin/createdb" observatorio
 ```
 
-¿Prefieres Docker? `docker compose up -d` y usa la URL alternativa de `.env.example`.
+Prefer Docker? `docker compose up -d` and use the alternative URL in `.env.example`.
 
 ```bash
 cp .env.example .env
@@ -25,21 +25,21 @@ npm install
 npm run db:migrate
 npm run dev:web               # http://localhost:3000/api/health
 npm run dev:worker
-curl -X POST localhost:3000/api/jobs   # el worker imprime "hello from worker"
+curl -X POST localhost:3000/api/jobs   # the worker prints "hello from worker"
 ```
 
-Cambiar el esquema: editar `db/src/schema.ts`, luego `npm run db:generate` y commitear la migración en `db/migrations/`.
+Changing the schema: edit `db/src/schema.ts`, then `npm run db:generate` and commit the migration in `db/migrations/`.
 
 ## Android
 
-Abrir `android/` en Android Studio y ejecutar en el emulador; por defecto llama a `http://10.0.2.2:3000` (el `npm run dev:web` del host). Para otro backend: `./gradlew installDebug -PapiBaseUrl=https://...`.
+Open `android/` in Android Studio and run it on the emulator; by default it calls `http://10.0.2.2:3000` (the host's `npm run dev:web`). For another backend: `./gradlew installDebug -PapiBaseUrl=https://...`.
 
 ## Deploy
 
-Render solo despliega desde repos propios: configurar el mirror descrito en el README y crear un Blueprint apuntando a `render.yaml`. Las migraciones corren al iniciar `olm-web`.
+Render only deploys from repos you own: set up the personal mirror described in `AGENTS.md` (Deploy notes) and create a Blueprint pointing at `render.yaml`. Migrations run when `olm-web` starts.
 
-## Notas
+## Notes
 
-- `web/` usa Cache Components (Next 16): una página o route handler que lea la DB debe llamar `await connection()` (de `next/server`) o estar dentro de `<Suspense>`; si no, `next build` falla o intenta consultar la DB en el build, que en Render no tiene acceso a ella.
-- Una sola persona a la vez genera migraciones (`npm run db:generate`); dos `0001_*` en paralelo chocan en `db/migrations/meta/_journal.json`.
-- En el plan gratis de Render `olm-web` se duerme tras ~15 min; la primera petición tarda 30–60 s.
+- `web/` uses Cache Components (Next 16): a page or route handler that reads the DB must call `await connection()` (from `next/server`) or be inside `<Suspense>`; otherwise `next build` fails or tries to query the DB at build time, which has no access to it on Render.
+- Only one person at a time generates migrations (`npm run db:generate`); two parallel `0001_*` files collide in `db/migrations/meta/_journal.json`.
+- On Render's free plan `olm-web` sleeps after ~15 min; the first request takes 30–60 s.
