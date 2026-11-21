@@ -89,9 +89,9 @@ BLE is a stretch goal.
 | Buzzer TMB12A05 | 1 | local notifications | **Active** 5 V buzzer (~30 mA): beeps on DC, `BUZZER_PASSIVE 0` |
 | Push button | 1 | event marker | To GND, internal pull-up |
 | Mini switch | 1 | **privacy switch** | Between the 5 V rail and the ESP32-CAM: the camera is physically unpowered. The Uno senses the switched side |
-| USB power bank (5 V, ≥2 A) | 1 | **main power** for bench work and the demo | Wired straight to the 5 V rail (cut-open USB cable or USB breakout) |
-| LM2596 buck module | 1 | battery → 5 V | Only useful with a 2S (7.4 V) pack: a buck can't make 5 V from 3.7 V. **Set to 5.0–5.1 V with a multimeter before connecting anything** |
-| Li-ion/LiPo battery, 260 mAh, 0.96 Wh | 1 | untethered segment (if usable) | 0.96 Wh ÷ 0.26 Ah = **3.7 V, i.e. a single cell**, not the 7 V we assumed. **Measure it with a multimeter** (§5). Not recharged during the hackathon |
+| USB power bank (5 V, ≥2 A) | 1 | **bench power** (and demo backup) | Wired straight to the 5 V rail (cut-open USB cable or USB breakout) |
+| LM2596 buck module | 1 | 2S battery → 5 V | Needs the 2S pack: a buck can't make 5 V from a single 3.7 V cell. **Set to 5.0–5.1 V with a multimeter before connecting anything** |
+| Li-ion/LiPo cells, 260 mAh / 0.96 Wh (3.7 V) | 2 | untethered power, **in series = 2S 7.4 V** | Same model, matched voltage (§5). Not recharged during the hackathon |
 | Red LED + 330 Ω | 1 | recording indicator (front face) | Driven by the Uno, only while ESP32-CAM reports active capture |
 | Resistors 100 kΩ ×2 + 100 nF | 1 set | battery divider | Halves the battery voltage at A3 (≤4.2 V for 2S, ≤2.1 V for 1S). Tapped **after** the main switch |
 | Resistors 1 kΩ + 2 kΩ | 1 pair | UART level shift (Uno 5 V → ESP 3.3 V) | |
@@ -173,12 +173,21 @@ GPIO12 selects the flash voltage at boot: if it is HIGH during reset, the ESP32 
 | DHT11 + KY-037 + RTC + LED + buzzer | 15 mA | 40 mA |
 | **Total** | **~545 mA (2.7 W)** | **~840 mA** |
 
-**The battery label (260 mAh, 0.96 Wh) implies a single 3.7 V cell**, not the 7 V pack we assumed. Measure it before wiring anything:
+**Battery: two 260 mAh / 0.96 Wh cells in series (2S).** Each label implies a single 3.7 V cell. In series they give 7.4 V nominal (8.4 V full), which the LM2596 can step down to 5 V. Capacity stays 260 mAh, but energy doubles to 1.92 Wh:
 
-- **~3.7–4.2 V (1S):** the LM2596 can't produce 5 V from it (a buck only steps down). Without a boost converter (none available), the battery **can't power the device**. The power bank is the only supply. Set `BATT_CELLS 1`.
-- **~7.4–8.4 V (2S):** the buck works. With 0.96 Wh and ~3.2 W drawn (2.7 W load at ~85 % efficiency), runtime is **~18 min** with everything on, or ~40 min with the MQ sensors unplugged. Peaks of ~0.7 A are a lot for such a small pack, so expect sag. Set `BATT_CELLS 2`.
+| Configuration | Drawn from the pack (~85 % buck) | Runtime |
+|---|---:|---:|
+| Everything on | ~3.2 W (~0.43 A) | **~35 min** |
+| MQ sensors unplugged | ~1.4 W (~0.19 A) | ~80 min |
 
-**Plan:** bench work and the demo run from a **USB power bank (5 V, ≥2 A) wired straight to the 5 V rail**. If the MQ sensors aren't needed in a session, unplug their 5 V: they're 55 % of the load.
+Expect less in practice: peaks of ~0.7 A are a lot for cells this small and the voltage will sag. Precautions, since nothing balances the cells:
+
+- Use two cells of the same model, and measure each before connecting them: they should be within ~0.1 V.
+- The Uno only sees the total voltage. A weak cell can over-discharge before the total reaches the critical threshold, so re-measure both cells after each run.
+- Insulate the series joint, and fuse or switch the pack's positive lead.
+- `BATT_CELLS 2` (the firmware default).
+
+**Plan:** bench work runs from a **USB power bank (5 V, ≥2 A) wired straight to the 5 V rail**. The 2S pack covers the untethered demo segment. If the MQ sensors aren't needed in a session, unplug their 5 V: they're 55 % of the load.
 
 The Uno reports battery voltage on A3 every second. Thresholds scale with `BATT_CELLS`: **< 3.5 V/cell = low** (`LOW_BATT`, buzzer), **< 3.3 V/cell = critical** (`CRIT_BATT`, the ESP32-CAM closes the session). Below 2.5 V on the divider there is no battery (power bank): `batt_mv` is left empty and no alarms fire.
 
@@ -257,7 +266,7 @@ All endpoints require `Authorization: Bearer <API_TOKEN>`. Wi-Fi: the device joi
 
 | # | Step | Done when |
 |---|---|---|
-| 1 | Measure the battery voltage; wire the power bank to the 5 V rail | battery is 1S or 2S (set `BATT_CELLS`); rail reads 5.0–5.1 V |
+| 1 | Measure both cells (≤0.1 V apart), wire them in series, set the LM2596 to 5.0 V; wire the power bank alternative | pack reads 7.4–8.4 V; rail reads 5.0–5.1 V on both supplies |
 | 2 | Uno + DHT11 + RTC on USB | serial shows `S,...` lines every second with a sane temperature and advancing epoch |
 | 3 | Add MQ-7, MQ-2, KY-037, battery divider | values react to a lighter (MQ-2, without flame), clapping (sound) and the measured battery voltage ±0.1 V |
 | 4 | Button, buzzer, privacy sense, LED | `E,BUTTON` on press, buzzer patterns via serial, `PRIVACY_*` events on toggle |

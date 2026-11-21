@@ -19,6 +19,6 @@ Available parts: ESP32-CAM, Arduino Uno, DHT11, MQ-7, MQ-2, KY-037, RTC, buzzer,
 
 - Android talks to the device over HTTP on the local network, not BLE.
 - Timestamps are accurate to ~0.1–0.2 s (windowed-max offset over the 1 s RTC resolution). That's enough for eating episodes.
-- The 260 mAh battery (0.96 Wh) is most likely a single 3.7 V cell, which the LM2596 can't step up to 5 V: bench work and the demo use a USB power bank on the 5 V rail.
+- Power: two 260 mAh 3.7 V cells in series (2S) feed the LM2596, ~35 min with everything on. Bench work uses a USB power bank on the 5 V rail.
 - Gas and sound readings are relative indicators only. There is no IMU, so wear detection relies on image quality.
 - Details: `hardware/README.md`.

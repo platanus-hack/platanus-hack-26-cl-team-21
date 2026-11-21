@@ -46,6 +46,6 @@ arduino-cli monitor -p /dev/cu.usbserial-* -c baudrate=115200
   curl -H "$T" -X POST "http://olm-<id>.local/capture/start?protocol=eating-v1"
   curl -H "$T" http://olm-<id>.local/sessions
   ```
-- Config flags at the top of `sensor-hub.ino`: `BUZZER_PASSIVE` (0 for the TMB12A05) and `BATT_CELLS` (measure the battery: 1 for 3.7 V, 2 for 7.4 V). The RTC is a DS1302 on D10–D12.
+- Config flags at the top of `sensor-hub.ino`: `BUZZER_PASSIVE` (0 for the TMB12A05) and `BATT_CELLS` (2 for the two cells in series; 1 for a single cell). The RTC is a DS1302 on D10–D12.
 - The DS1302 starts with an invalid date: sync it once (`/time`) before the first session, or the frames carry no epoch.
 - `secrets.h` is git-ignored; never commit Wi-Fi credentials.

@@ -14,8 +14,8 @@
 #define SAMPLE_PERIOD_MS 1000UL
 #define SOUND_WINDOW_MS 50UL
 #define REC_TIMEOUT_MS 3000UL
-// The battery label (260 mAh, 0.96 Wh) implies a single 3.7 V cell: measure it and set BATT_CELLS.
-#define BATT_CELLS 1
+// Two 260 mAh / 0.96 Wh (3.7 V) cells in series = 2S. Set 1 if running a single cell.
+#define BATT_CELLS 2
 #define LOW_BATT_MV (3500L * BATT_CELLS)
 #define CRIT_BATT_MV (3300L * BATT_CELLS)
 #define BATT_HYSTERESIS_MV (75L * BATT_CELLS)
