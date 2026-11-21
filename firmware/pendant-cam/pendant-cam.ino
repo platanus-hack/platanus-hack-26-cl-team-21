@@ -460,7 +460,7 @@ bool validSessionId(const String &id) {
   return true;
 }
 
-// /sessions/<id>/<file> and /sessions/<id>/frames/<n>.jpg, plus DELETE /sessions/<id>
+// /sessions/<id>/<file> and /sessions/<id>/frames/NNNNNN.jpg, plus DELETE /sessions/<id>
 void handleNotFound() {
   if (!authorized()) return;
   String uri = server.uri();
