@@ -1,0 +1,27 @@
+# Render Blueprint: deploy from your personal mirror repo (see README).
+databases:
+  - name: olm-db
+    plan: free # shortcut: free Postgres expires after ~30 days; upgrade before real pilots.
+
+services:
+  - type: web
+    name: olm-web
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build -w web
+    # Migrations run at start: the build step can't reach the private DB, and preDeployCommand is paid-only.
+    startCommand: npm run db:migrate && npm run start -w web
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: olm-db, property: connectionString }
+
+  - type: worker
+    name: olm-worker
+    runtime: node
+    plan: starter # background workers have no free plan
+    buildCommand: npm ci
+    startCommand: npm run start -w worker
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: olm-db, property: connectionString }
