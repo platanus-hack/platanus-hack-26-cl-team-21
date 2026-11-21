@@ -23,8 +23,10 @@ fi
 
 if touches '^web/.*\.(ts|tsx|js|mjs)$'; then
   echo "pre-push: eslint on changed web files"
-  (cd web && git diff -z --name-only --diff-filter=d --relative "$base" HEAD -- '*.ts' '*.tsx' '*.js' '*.mjs' |
-    xargs -0 ../node_modules/.bin/eslint)
+  # --relative=web, not `cd web` + --relative: git can export GIT_DIR to hooks (it does from a
+  # linked worktree), and then the cwd no longer sets the path prefix, so paths come out as web/...
+  git diff -z --name-only --diff-filter=d --relative=web "$base" HEAD -- '*.ts' '*.tsx' '*.js' '*.mjs' |
+    (cd web && xargs -0 ../node_modules/.bin/eslint)
 fi
 
 if touches '^(db/(src/|migrations/|drizzle\.config\.ts|package\.json)|package(-lock)?\.json)'; then
