@@ -1,11 +1,10 @@
+import { redirect } from "next/navigation";
+
+// Only redirects, so there is no UI for instant-navigation validation to render (it would log
+// NEXT_REDIRECT as an error in dev).
+export const instant = false;
+
+// No landing page yet: the study list is the portal's home.
 export default function Home() {
-  return (
-    <main className="mx-auto flex max-w-2xl flex-1 flex-col justify-center gap-4 p-8">
-      <h1 className="text-3xl font-semibold">Observatorio Longitudinal Multimodal</h1>
-      <p>Portal de investigadores — hello world.</p>
-      <a className="underline" href="/api/health">
-        /api/health
-      </a>
-    </main>
-  );
+  redirect("/studies");
 }
