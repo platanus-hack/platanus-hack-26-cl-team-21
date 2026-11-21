@@ -34,6 +34,8 @@ curl -X POST localhost:3000/api/jobs   # the worker prints "hello from worker"
 
 Changing the schema: edit the module for that area in `db/src/schema/`, then `npm run db:generate` and commit the migration in `db/migrations/`. Rules Drizzle can't express (no-overlap constraints, triggers, SQL functions) go in a custom migration; see [`db/README.md`](db/README.md). `npm run db:test` checks those rules against your database (rolled back).
 
+`npm run test -w web` runs the API route tests (`web/src/**/*.test.ts`, `node:test` through `tsx`) against the database in `DATABASE_URL`. They insert their own study and participants with random codes and leave them there, so point it at a local or CI database, never production.
+
 ## Android
 
 Open `android/` in Android Studio and run it on the emulator; by default it calls `http://10.0.2.2:3000` (the host's `npm run dev:web`). For another backend: `./gradlew installDebug -PapiBaseUrl=https://...`.
@@ -50,5 +52,5 @@ Render only deploys from repos you own: set up the personal mirror described in 
 - Only one person at a time generates migrations (`npm run db:generate`); two parallel `0001_*` files collide in `db/migrations/meta/_journal.json`.
 - On Render's free plan `olm-web` sleeps after ~15 min; the first request takes 30–60 s.
 - Production storage is the private B2 bucket `olm-media-epoqpl` (CORS allows presigned PUT/GET/HEAD from any origin; hidden file versions are purged after a day). Its bucket-scoped key is set in the Render dashboard; ask the backend owner for a local copy. B2 keeps old versions on a plain S3 delete, so always delete through `storage.delete()`, which removes every version.
-- CI (`.github/workflows/ci.yml`) runs each job only when the PR touches its files: `web` (lint, build), `db` (migration checks, rule tests, seed), `storage` (typecheck, key and delete tests; the MinIO round trip is local only), `mock-api` (tests) and `android` (build, lint). Editing the workflow runs them all.
+- CI (`.github/workflows/ci.yml`) runs each job only when the PR touches its files: `web` (lint, build, route tests against a migrated Postgres), `db` (migration checks, rule tests, seed), `storage` (typecheck, key and delete tests; the MinIO round trip is local only), `mock-api` (tests) and `android` (build, lint). Editing the workflow runs them all.
 - `npm install` turns on a pre-push hook (`.githooks/pre-push`) with light versions of the CI checks for the areas the push changes: eslint on changed `web` files, migration checks for `db`, the `storage` unit tests and the mock API tests. Android and the web build are left to CI. Skip it with `git push --no-verify`.
