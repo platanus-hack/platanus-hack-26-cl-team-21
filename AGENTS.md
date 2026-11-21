@@ -4,7 +4,9 @@ Shared context for every coding agent (and human) working on this repo. Keep it 
 
 ## 1. Project in one paragraph
 
-We are building a **Multimodal Longitudinal Observatory** for Platanus Hack 26 (Hardware track). It is scientific instrumentation, not a lifelogging gadget: a wearable pendant captures video and sensor data under a researcher-defined **observation protocol**, the participant reviews and approves what gets uploaded from an Android app, an AI pipeline cuts only the study-relevant segments of authentic footage and extracts **structured, protocol-defined variables**, and researchers explore and export them in a web portal. Every measurement is linked to its evidence and carries explicit **coverage and uncertainty**.
+We are building **Rigo**, a multimodal longitudinal observatory, for Platanus Hack 26 (Hardware track). It is scientific instrumentation, not a lifelogging gadget: a wearable pendant captures video and sensor data under a researcher-defined **observation protocol**, the participant reviews and approves what gets uploaded from an Android app, an AI pipeline cuts only the study-relevant segments of authentic footage and extracts **structured, protocol-defined variables**, and researchers explore and export them in a web portal. Every measurement is linked to its evidence and carries explicit **coverage and uncertainty**.
+
+**Names:** the project and the participant Android app are **Rigo**, and the researcher web portal is **Rigo Lab**. Internal identifiers keep their old names until their owners rename them: the Android package `cl.observatorio.participante`, `@observatorio/db`, the `observatorio` database, the Render `olm-*` services and the `olm-<id>.local` pendant hostname. Never rename `olm-db` in `render.yaml`: Render would create a new, empty database.
 
 **Demo vertical: eating episodes.** We detect when the participant eats or drinks, how often, for how long and in what observable context. We do **not** estimate calories, portion weight or nutrients.
 

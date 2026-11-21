@@ -1,4 +1,4 @@
-# Multimodal Longitudinal Observatory
+# Rigo — multimodal longitudinal observatory
 
 <img src="./project-logo.png" alt="Project Logo" width="200" />
 

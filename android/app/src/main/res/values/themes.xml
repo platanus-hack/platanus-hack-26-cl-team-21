@@ -4,5 +4,5 @@
     <style name="Theme.Observatorio" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/paper</item>
     </style>
-    <color name="paper">#F3EFE6</color>
+    <color name="paper">#F2E7E1</color>
 </resources>

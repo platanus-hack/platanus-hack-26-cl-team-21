@@ -75,7 +75,8 @@ private sealed interface PendantState {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeviceScreen(pendant: PendantApi) {
+fun DeviceScreen(pendant: PendantApi, studyCode: String, participantId: String, onLeaveStudy: () -> Unit) {
+    var confirmLeave by remember { mutableStateOf(false) }
     var state by remember { mutableStateOf<PendantState>(PendantState.Searching) }
     LaunchedEffect(pendant) {
         while (true) {
@@ -90,7 +91,7 @@ fun DeviceScreen(pendant: PendantApi) {
         }
     }
     var serverOk by remember { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(Unit) { serverOk = checkHealth() }
+    if (BuildConfig.DEBUG) LaunchedEffect(Unit) { serverOk = checkHealth() }
 
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
@@ -112,23 +113,47 @@ fun DeviceScreen(pendant: PendantApi) {
                 )
                 is PendantState.Found -> DeviceContent(current.status, current.receivedAt)
             }
-            SectionTitle(stringResource(R.string.device_server))
+            SectionTitle(stringResource(R.string.study_section))
             ListItem(
-                headlineContent = {
-                    Text(
-                        stringResource(
-                            when (serverOk) {
-                                null -> R.string.device_server_checking
-                                true -> R.string.device_server_ok
-                                false -> R.string.device_server_error
-                            },
-                        ),
-                    )
-                },
-                supportingContent = { Text(BuildConfig.API_BASE_URL) },
+                headlineContent = { Text(studyCode) },
+                supportingContent = { Text(stringResource(R.string.study_participant, participantId)) },
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
             )
+            SecondaryActionButton(
+                stringResource(R.string.leave_study),
+                onClick = { confirmLeave = true },
+                destructive = true,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            // Developer diagnostics: a backend URL means nothing to a participant, so debug builds only.
+            if (BuildConfig.DEBUG) {
+                SectionTitle(stringResource(R.string.device_server))
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            stringResource(
+                                when (serverOk) {
+                                    null -> R.string.device_server_checking
+                                    true -> R.string.device_server_ok
+                                    false -> R.string.device_server_error
+                                },
+                            ),
+                        )
+                    },
+                    supportingContent = { Text(BuildConfig.API_BASE_URL) },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                )
+            }
         }
+    }
+    if (confirmLeave) {
+        ConfirmDestructiveDialog(
+            title = stringResource(R.string.leave_study_title),
+            body = stringResource(R.string.leave_study_body),
+            confirm = stringResource(R.string.leave_study_confirm),
+            onConfirm = { confirmLeave = false; onLeaveStudy() },
+            onDismiss = { confirmLeave = false },
+        )
     }
 }
 

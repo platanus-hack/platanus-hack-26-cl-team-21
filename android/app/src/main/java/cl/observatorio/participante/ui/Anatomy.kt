@@ -8,13 +8,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -78,13 +84,27 @@ fun Highlighted(
 ) {
     val marker = MaterialTheme.colorScheme.tertiary
     val onMarker = MaterialTheme.colorScheme.onTertiary
+    val from = before.length
+    val to = from + highlight.length
+    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     Text(
         buildAnnotatedString {
             append(before)
-            // Non-breaking spaces keep the phrase on one line; only a leading pad, since a trailing one can wrap alone.
-            withStyle(SpanStyle(background = marker, color = onMarker)) { append("\u00A0" + highlight.replace(' ', '\u00A0')) }
+            // Non-breaking spaces keep the phrase on one line.
+            withStyle(SpanStyle(color = onMarker)) { append(highlight.replace(' ', '\u00A0')) }
             append(after)
         },
         style = style,
+        onTextLayout = { layout = it },
+        // Drawn instead of a span background so the marker bleeds past the glyphs and the text keeps its alignment.
+        modifier = Modifier.drawBehind {
+            val l = layout ?: return@drawBehind
+            val bleed = style.fontSize.toPx() * 0.12f
+            for (line in l.getLineForOffset(from)..l.getLineForOffset(to - 1)) {
+                val left = maxOf(l.getLineLeft(line), l.getHorizontalPosition(maxOf(from, l.getLineStart(line)), true))
+                val right = minOf(l.getLineRight(line), l.getHorizontalPosition(minOf(to, l.getLineEnd(line)), true))
+                drawRect(marker, Offset(left - bleed, l.getLineTop(line)), Size(right - left + 2 * bleed, l.getLineBottom(line) - l.getLineTop(line)))
+            }
+        },
     )
 }

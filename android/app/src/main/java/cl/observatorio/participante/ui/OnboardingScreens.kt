@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -35,10 +36,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
@@ -47,6 +51,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import cl.observatorio.participante.BuildConfig
+import cl.observatorio.participante.ui.theme.TabularNumbers
 import cl.observatorio.participante.R
 import cl.observatorio.participante.ui.theme.ObservatorioTheme
 import kotlinx.coroutines.delay
@@ -59,19 +67,21 @@ fun WelcomeScreen(onStart: () -> Unit) {
             .safeDrawingPadding()
             .padding(24.dp),
     ) {
-        Text(
-            stringResource(R.string.app_name).uppercase(),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.secondary,
-        )
-        // Centered when it fits, scrollable when it doesn't (large font sizes); the action stays pinned below.
+        // Lab-label header: name, what it is, and the build as its batch code. Same size, ink only.
+        Column(Modifier.semantics(mergeDescendants = true) {}) {
+            val tag = MaterialTheme.typography.titleLarge
+            Text(stringResource(R.string.app_name).uppercase(), style = tag.copy(fontWeight = FontWeight.Medium))
+            Text(stringResource(R.string.welcome_tag), style = tag)
+            Text("v" + BuildConfig.VERSION_NAME, style = tag.merge(TabularNumbers))
+        }
+        // Anchored above the action when it fits, scrollable when it doesn't (large font sizes); the action stays pinned below.
         BoxWithConstraints(Modifier.weight(1f)) {
             Column(
                 Modifier
                     .verticalScroll(rememberScrollState())
                     .heightIn(min = maxHeight)
                     .padding(vertical = 24.dp),
-                verticalArrangement = Arrangement.Center,
+                verticalArrangement = Arrangement.Bottom,
             ) {
                 Highlighted(
                     stringResource(R.string.welcome_title_before),
@@ -80,14 +90,13 @@ fun WelcomeScreen(onStart: () -> Unit) {
                 )
                 Spacer(Modifier.height(32.dp))
                 // The screen's one "anatomía" detail: the intro block framed like a plate caption.
+                // Ticks fall in the screen margin so the text stays aligned with the headline.
                 Column(
                     Modifier
-                        .padding(horizontal = 16.dp)
                         .cornerTicks(MaterialTheme.colorScheme.outline)
-                        .padding(16.dp),
+                        .padding(vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(stringResource(R.string.welcome_subtitle), style = MaterialTheme.typography.titleLarge)
                     Text(
                         stringResource(R.string.welcome_body),
                         style = MaterialTheme.typography.bodyLarge,
@@ -113,6 +122,9 @@ fun JoinStudyScreen(onBack: () -> Unit, onJoin: (studyCode: String, participantI
     var study by rememberSaveable { mutableStateOf("") }
     var participant by rememberSaveable { mutableStateOf("") }
     val canJoin = study.isNotBlank() && participant.isNotBlank()
+    val studyFocus = remember { FocusRequester() }
+    // Only on first arrival: coming back with codes already typed shouldn't pop the keyboard.
+    LaunchedEffect(Unit) { if (study.isEmpty()) studyFocus.requestFocus() }
     StepScaffold(
         title = stringResource(R.string.join_title),
         onBack = onBack,
@@ -128,7 +140,7 @@ fun JoinStudyScreen(onBack: () -> Unit, onJoin: (studyCode: String, participantI
             placeholder = { Text("EAT-001") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Next),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().focusRequester(studyFocus),
         )
         OutlinedTextField(
             value = participant,
@@ -137,6 +149,7 @@ fun JoinStudyScreen(onBack: () -> Unit, onJoin: (studyCode: String, participantI
             placeholder = { Text("p-019") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { if (canJoin) onJoin(study.trim(), participant.trim()) }),
             modifier = Modifier.fillMaxWidth(),
         )
         Text(

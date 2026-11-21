@@ -31,14 +31,14 @@ The brand scheme is used instead of dynamic color (Material You), because dynami
 
 | Role | Hex | Use |
 |---|---|---|
-| `primary` | `#192859` navy | Main buttons, app bar titles, key text. 12.3:1 on paper |
+| `primary` | `#192859` navy | Main buttons, app bar titles, key text. 11.6:1 on paper |
 | `onPrimary` | `#FFFFFF` | |
-| `secondary` | `#28469e` blue | Links, selected states, progress, active tabs. 7.4:1 on paper |
+| `secondary` | `#28469e` blue | Links, selected states, progress, active tabs. 7.0:1 on paper |
 | `tertiary` / highlight | `#f27533` orange | **The highlight.** Recording indicator, the one key word in a headline (like a marker highlight), primary action of the review flow. Dark text on top (6.1:1) |
 | `warning` (custom) | `#f6a321` amber | Pending review, low battery, storage almost full. Fill only, dark text on top |
-| `background` / `surface` | `#F3EFE6` paper | Screens |
-| `surfaceVariant` | `#E4DFD2` | Cards, grouped sections (the darker paper box in the reference) |
-| `onSurface` | `#1A1A1A` ink | Body text. 15.2:1 |
+| `background` / `surface` | `#F2E7E1` paper | Screens |
+| `surfaceVariant` | `#E3D7CD` | Cards, grouped sections (the darker paper box in the reference) |
+| `onSurface` | `#1A1A1A` ink | Body text. 14.3:1 |
 | `outline` | `#1A1A1A` at ~60% | 1 dp hairlines |
 | `error` | Material default `#BA1A1A` | Kept separate from orange so errors are not confused with the highlight |
 

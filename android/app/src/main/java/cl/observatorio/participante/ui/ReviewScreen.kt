@@ -28,20 +28,32 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -50,13 +62,20 @@ import cl.observatorio.participante.R
 import cl.observatorio.participante.review.Clip
 import cl.observatorio.participante.review.ClipStatus
 import cl.observatorio.participante.review.Interval
+import cl.observatorio.participante.review.addExcluded
+import cl.observatorio.participante.review.constrain
+import cl.observatorio.participante.review.defaultSelection
+import cl.observatorio.participante.review.freeGaps
+import cl.observatorio.participante.review.sharedSeconds
 import cl.observatorio.participante.ui.theme.Amber
 import cl.observatorio.participante.ui.theme.Ink
 import cl.observatorio.participante.ui.theme.ObservatorioTheme
 import cl.observatorio.participante.ui.theme.TabularNumbers
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,14 +89,16 @@ fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolea
         LazyColumn(contentPadding = padding) {
             item {
                 Column(Modifier.padding(16.dp)) {
-                    Highlighted(
-                        stringResource(R.string.review_summary_before),
-                        stringResource(
-                            R.string.review_summary_count,
-                            clips.count { it.status == ClipStatus.PENDING },
-                            clips.size,
-                        ),
-                    )
+                    // One headline: the app bar already says "Revisar", so this only states what's left.
+                    val pending = clips.count { it.status == ClipStatus.PENDING }
+                    if (clips.isNotEmpty()) {
+                        Highlighted(
+                            "",
+                            if (pending == 0) stringResource(R.string.review_all_done)
+                            else pluralStringResource(R.plurals.review_pending, pending, pending),
+                            style = MaterialTheme.typography.headlineMedium,
+                        )
+                    }
                     Text(
                         stringResource(R.string.review_privacy_note),
                         style = MaterialTheme.typography.bodyMedium,
@@ -105,7 +126,14 @@ fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolea
                 ListItem(
                     headlineContent = { Text(clipRange(clip), style = MaterialTheme.typography.bodyLarge.merge(TabularNumbers)) },
                     supportingContent = {
-                        Text(stringResource(R.string.review_clip_meta, mmss(clip.durationSeconds), clip.id))
+                        val meta = stringResource(R.string.review_clip_meta, duration(clip.durationSeconds), clip.id)
+                        val spans = clip.excluded.size
+                        // A fully excluded clip already says "Excluido"; only partial exclusions need the count.
+                        Text(
+                            if (spans > 0 && clip.status != ClipStatus.EXCLUDED) {
+                                meta + " · " + pluralStringResource(R.plurals.review_clip_excluded, spans, spans)
+                            } else meta,
+                        )
                     },
                     trailingContent = { ClipStatusLabel(clip.status) },
                     colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
@@ -119,8 +147,28 @@ fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolea
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ClipDetailScreen(clip: Clip, onChange: ((Clip) -> Clip) -> Unit, onBack: () -> Unit) {
-    var range by remember(clip.id) { mutableStateOf(0f..clip.durationSeconds / 4f) }
+fun ClipDetailScreen(
+    clip: Clip,
+    onChange: ((Clip) -> Clip) -> Unit,
+    onBack: () -> Unit,
+    onDecided: (before: Clip, message: String) -> Unit,
+) {
+    val approvedMsg = stringResource(R.string.clip_approved_msg)
+    val excludedMsg = stringResource(R.string.clip_excluded_msg)
+    val restoredMsg = stringResource(R.string.clip_range_restored_msg)
+    val undoLabel = stringResource(R.string.undo)
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var confirmExcludeAll by remember { mutableStateOf(false) }
+
+    val length = clip.durationSeconds
+    val gaps = freeGaps(length, clip.excluded)
+    val shared = sharedSeconds(length, clip.excluded)
+    var picked by remember(clip.id) { mutableStateOf<ClosedFloatingPointRange<Float>?>(null) }
+    // Falls back to a fresh selection when the current one is gone (first open, after excluding, after an undo).
+    val selection = picked?.takeIf { sel -> gaps.any { sel.start >= it.start && sel.endInclusive <= it.end } }
+        ?: defaultSelection(length, gaps)
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -132,6 +180,7 @@ fun ClipDetailScreen(clip: Clip, onChange: ((Clip) -> Clip) -> Unit, onBack: () 
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             Column(
                 Modifier
@@ -139,16 +188,41 @@ fun ClipDetailScreen(clip: Clip, onChange: ((Clip) -> Clip) -> Unit, onBack: () 
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                MainActionButton(stringResource(R.string.clip_approve), onClick = {
-                    onChange { it.copy(status = ClipStatus.APPROVED) }
-                    onBack()
-                })
-                SecondaryActionButton(stringResource(R.string.clip_exclude_all), onClick = {
-                    onChange {
-                        it.copy(status = ClipStatus.EXCLUDED, excluded = listOf(Interval(0, it.durationSeconds)))
+                // Actions follow the clip's state: say where it stands, offer only the way to change it.
+                val note = MaterialTheme.typography.bodyMedium
+                val noteColor = MaterialTheme.colorScheme.onSurfaceVariant
+                val summary = stringResource(R.string.clip_shared_summary, duration(shared), duration(length))
+                when (clip.status) {
+                    ClipStatus.PENDING -> {
+                        if (clip.excluded.isNotEmpty()) Text(summary, style = note, color = noteColor)
+                        MainActionButton(
+                            stringResource(R.string.clip_approve),
+                            onClick = {
+                                onChange { it.copy(status = ClipStatus.APPROVED) }
+                                onDecided(clip, approvedMsg)
+                            },
+                            enabled = shared > 0,
+                        )
+                        SecondaryActionButton(stringResource(R.string.clip_exclude_all), onClick = { confirmExcludeAll = true })
                     }
-                    onBack()
-                })
+                    ClipStatus.APPROVED -> {
+                        Text(
+                            stringResource(R.string.clip_state_approved) + " " +
+                                if (clip.excluded.isNotEmpty()) summary else stringResource(R.string.clip_shared_whole),
+                            style = note,
+                            color = noteColor,
+                        )
+                        SecondaryActionButton(stringResource(R.string.clip_back_to_pending), onClick = {
+                            onChange { it.copy(status = ClipStatus.PENDING) }
+                        })
+                    }
+                    ClipStatus.EXCLUDED -> {
+                        Text(stringResource(R.string.clip_state_excluded), style = note, color = noteColor)
+                        MainActionButton(stringResource(R.string.clip_include_again), onClick = {
+                            onChange { it.copy(status = ClipStatus.PENDING, excluded = emptyList()) }
+                        })
+                    }
+                }
             }
         },
     ) { padding ->
@@ -176,39 +250,88 @@ fun ClipDetailScreen(clip: Clip, onChange: ((Clip) -> Clip) -> Unit, onBack: () 
                 )
             }
 
-            SectionTitle(stringResource(R.string.clip_exclude_range_title))
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                Text(stringResource(R.string.clip_exclude_range_hint), style = MaterialTheme.typography.bodyMedium)
-                RangeSlider(
-                    value = range,
-                    onValueChange = { range = it },
-                    valueRange = 0f..clip.durationSeconds.toFloat(),
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        "${mmss(range.start.toInt())} – ${mmss(range.endInclusive.toInt())}",
-                        style = MaterialTheme.typography.titleLarge.merge(TabularNumbers),
-                    )
-                    InlineButton(
-                        stringResource(R.string.clip_exclude_range),
-                        onClick = {
-                            val interval = Interval(range.start.toInt(), range.endInclusive.toInt())
-                            onChange { if (interval in it.excluded) it else it.copy(excluded = it.excluded + interval) }
-                        },
-                        enabled = range.endInclusive.toInt() > range.start.toInt(),
-                    )
+            // Only a pending clip is editable: an approved one goes back to pending first, so nothing
+            // gets shared that the participant didn't approve in its final form.
+            if (clip.status == ClipStatus.PENDING) {
+                SectionTitle(stringResource(R.string.clip_exclude_range_title))
+                Column(Modifier.padding(horizontal = 16.dp)) {
+                    if (selection == null) {
+                        Text(stringResource(R.string.clip_all_excluded), style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        Text(stringResource(R.string.clip_exclude_range_hint), style = MaterialTheme.typography.bodyMedium)
+                        if (clip.excluded.isNotEmpty()) {
+                            Text(
+                                stringResource(R.string.clip_excluded_hatch_hint),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        val hatchFill = MaterialTheme.colorScheme.surfaceVariant
+                        val hatchLine = MaterialTheme.colorScheme.onSurfaceVariant
+                        // key: RangeSlider keeps its own idea of where the thumbs are, so after a programmatic jump
+                        // it would grab the wrong thumb. A fresh slider per set of exclusions starts from the real selection.
+                        key(clip.excluded) {
+                            RangeSlider(
+                                value = selection,
+                                onValueChange = { picked = constrain(selection, it, gaps) },
+                                valueRange = 0f..length.toFloat(),
+                                track = { state ->
+                                    SliderDefaults.Track(
+                                        rangeSliderState = state,
+                                        // Excluded spans are hatched on the track: a pattern, not only a color.
+                                        modifier = Modifier.drawWithContent {
+                                            drawContent()
+                                            clip.excluded.forEach { span ->
+                                                hatch(span.start / length.toFloat() * size.width, span.end / length.toFloat() * size.width, hatchFill, hatchLine)
+                                            }
+                                        },
+                                    )
+                                },
+                            )
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            val edge = MaterialTheme.typography.bodyMedium.merge(TabularNumbers)
+                            Text(clockAt(clip, 0), style = edge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(clockAt(clip, length), style = edge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "${clockAt(clip, selection.start.roundToInt())} – ${clockAt(clip, selection.endInclusive.roundToInt())}",
+                                style = MaterialTheme.typography.titleLarge.merge(TabularNumbers),
+                            )
+                            InlineButton(
+                                stringResource(R.string.clip_exclude_range),
+                                onClick = {
+                                    val span = Interval(selection.start.roundToInt(), selection.endInclusive.roundToInt())
+                                    onChange { it.copy(excluded = addExcluded(it.excluded, span)) }
+                                    picked = null
+                                },
+                                enabled = selection.endInclusive.roundToInt() > selection.start.roundToInt(),
+                                destructive = true,
+                            )
+                        }
+                    }
                 }
             }
 
-            if (clip.excluded.isNotEmpty()) {
+            if (clip.status != ClipStatus.EXCLUDED && clip.excluded.isNotEmpty()) {
                 SectionTitle(stringResource(R.string.clip_excluded_ranges))
-                clip.excluded.forEach { interval ->
-                    val label = "${mmss(interval.start)} – ${mmss(interval.end)}"
+                clip.excluded.forEach { span ->
+                    val label = "${clockAt(clip, span.start)} – ${clockAt(clip, span.end)}"
                     ListItem(
                         headlineContent = { Text(label, style = MaterialTheme.typography.bodyLarge.merge(TabularNumbers)) },
                         trailingContent = {
-                            IconButton(onClick = { onChange { it.copy(excluded = it.excluded - interval) } }) {
-                                Icon(Icons.Outlined.Delete, stringResource(R.string.clip_remove_range, label))
+                            if (clip.status == ClipStatus.PENDING) {
+                                IconButton(onClick = {
+                                    onChange { it.copy(excluded = it.excluded - span) }
+                                    scope.launch {
+                                        val result = snackbar.showSnackbar(restoredMsg, undoLabel, duration = SnackbarDuration.Short)
+                                        // Re-add only this span, so anything excluded meanwhile survives the undo.
+                                        if (result == SnackbarResult.ActionPerformed) onChange { it.copy(excluded = addExcluded(it.excluded, span)) }
+                                    }
+                                }) {
+                                    Icon(Icons.Outlined.Delete, stringResource(R.string.clip_remove_range, label))
+                                }
                             }
                         },
                         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
@@ -216,6 +339,31 @@ fun ClipDetailScreen(clip: Clip, onChange: ((Clip) -> Clip) -> Unit, onBack: () 
                 }
             }
         }
+    }
+
+    if (confirmExcludeAll) {
+        ConfirmDestructiveDialog(
+            title = stringResource(R.string.clip_exclude_all_title),
+            body = stringResource(R.string.clip_exclude_all_body),
+            confirm = stringResource(R.string.clip_exclude_all_confirm),
+            onConfirm = {
+                confirmExcludeAll = false
+                onChange { it.copy(status = ClipStatus.EXCLUDED, excluded = listOf(Interval(0, it.durationSeconds))) }
+                onDecided(clip, excludedMsg)
+            },
+            onDismiss = { confirmExcludeAll = false },
+        )
+    }
+}
+
+/** Diagonal stripes between two x positions, over a flat fill. */
+private fun DrawScope.hatch(left: Float, right: Float, fill: Color, line: Color) = clipRect(left, 0f, right, size.height) {
+    drawRect(fill)
+    val step = 5.dp.toPx()
+    var x = left - size.height
+    while (x < right) {
+        drawLine(line, Offset(x, size.height), Offset(x + size.height, 0f), 1.5.dp.toPx())
+        x += step
     }
 }
 
@@ -249,6 +397,7 @@ fun StatusLabel(text: String, container: Color, content: Color, outlined: Boolea
 }
 
 private val hourFormat = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
+private val clockFormat = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
 
 @Composable
 private fun clipRange(clip: Clip): String {
@@ -256,7 +405,22 @@ private fun clipRange(clip: Clip): String {
     return "${hourFormat.format(start)} – ${hourFormat.format(start.plusSeconds(clip.durationSeconds.toLong()))}"
 }
 
+/** Clock time of a point in the clip, the way participants remember moments; time into the clip when its clock is unknown. */
+private fun clockAt(clip: Clip, seconds: Int): String =
+    clip.startedAt?.let { clockFormat.format(it.plusSeconds(seconds.toLong())) } ?: mmss(seconds)
+
 internal fun mmss(seconds: Int) = "%02d:%02d".format(seconds / 60, seconds % 60)
+
+/** Clip length in words ("5 min", "1 min 15 s"), so it can't be mistaken for a time of day. */
+internal fun duration(seconds: Int): String {
+    val m = seconds / 60
+    val s = seconds % 60
+    return when {
+        m == 0 -> "$s s"
+        s == 0 -> "$m min"
+        else -> "$m min $s s"
+    }
+}
 
 @Preview(showBackground = true)
 @Composable
