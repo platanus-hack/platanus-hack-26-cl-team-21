@@ -1,4 +1,4 @@
 export * from "./schema";
 export * from "./client";
 export * from "./sensor-data";
-export { sql, eq, inArray } from "drizzle-orm";
+export { sql, and, eq, inArray, isNull, or } from "drizzle-orm";
