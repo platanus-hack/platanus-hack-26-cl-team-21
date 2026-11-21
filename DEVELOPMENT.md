@@ -40,6 +40,8 @@ Open `android/` in Android Studio and run it on the emulator; by default it call
 
 No backend yet? `npm run mock:api` serves the enrollment and upload API v0 on port 4010; see [`tools/mock-api/README.md`](tools/mock-api/README.md).
 
+CI runs the Android unit tests. Run the video encoder tests on a connected Android device or emulator from `android/`: `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=cl.observatorio.participante.video.Mp4EncoderTest`.
+
 ## Deploy
 
 Render only deploys from repos you own: set up the personal mirror described in `AGENTS.md` (Deploy notes) and create a Blueprint pointing at `render.yaml`. Migrations run when `olm-web` starts.
