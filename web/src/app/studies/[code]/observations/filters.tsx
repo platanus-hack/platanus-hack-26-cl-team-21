@@ -1,12 +1,13 @@
 import Form from "next/form";
 import Link from "next/link";
-import { type FilterOptions, type ObservationFilters, VISIBLE_REVIEW_STATUSES } from "@/lib/queries/observations";
-import { eventTypeLabel, REVIEW_STATUS_LABEL } from "./format";
+import { formatLocalDay } from "@/lib/format";
+import { eventTypeLabel, REVIEW_STATUS_LABELS, VISIBLE_REVIEW_STATUSES } from "@/lib/labels";
+import type { FilterOptions, ObservationFilters } from "@/lib/queries/observations";
 
 // Search param names of the observation list.
 export const FILTER_PARAMS = { participant: "participant", eventType: "event", reviewStatus: "review", date: "date" } as const;
 
-const selectClass = "rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm";
+const selectClass = "rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900";
 
 // Plain GET form: filters live in the URL and are applied on the server.
 export function ObservationFiltersForm({ action, options, filters }: { action: string; options: FilterOptions; filters: ObservationFilters }) {
@@ -41,7 +42,7 @@ export function ObservationFiltersForm({ action, options, filters }: { action: s
           <option value="">Todas</option>
           {VISIBLE_REVIEW_STATUSES.map((status) => (
             <option key={status} value={status}>
-              {REVIEW_STATUS_LABEL[status]}
+              {REVIEW_STATUS_LABELS[status]}
             </option>
           ))}
         </select>
@@ -52,7 +53,7 @@ export function ObservationFiltersForm({ action, options, filters }: { action: s
           <option value="">Todas</option>
           {options.dates.map((date) => (
             <option key={date} value={date}>
-              {date}
+              {formatLocalDay(date)} ({date})
             </option>
           ))}
         </select>

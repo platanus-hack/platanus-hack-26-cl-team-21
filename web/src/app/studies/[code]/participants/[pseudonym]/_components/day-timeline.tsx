@@ -1,6 +1,6 @@
 import type { TimelineDay } from "@/lib/queries/timeline";
-import { formatDuration, formatEnd, formatRange, formatTime } from "./format";
-import { STATUS, eventLabel, isHollowMarker } from "./labels";
+import { formatDuration, formatEnd, formatRange, formatTime } from "@/lib/format";
+import { COVERAGE_STATUS_LABELS, COVERAGE_STATUS_STYLES, eventTypeLabel } from "@/lib/labels";
 
 const HOUR_MS = 3_600_000;
 const TICK_HOURS = 3;
@@ -28,33 +28,33 @@ export function DayTimeline({ day, timeZone }: { day: TimelineDay; timeZone: str
       </figcaption>
       <div className="relative h-11 overflow-hidden rounded-md bg-zinc-100 ring-1 ring-black/10 dark:bg-zinc-900 dark:ring-white/10">
         {day.bands.map((band) => {
-          const status = STATUS[band.status];
-          const text = `${status.label}: ${formatRange(band.startMs, band.endMs, timeZone, day.endMs)} (${formatDuration(band.endMs - band.startMs)})`;
+          const statusLabel = COVERAGE_STATUS_LABELS[band.status];
+          const text = `${statusLabel}: ${formatRange(band.startMs, band.endMs, timeZone, day.endMs)} (${formatDuration((band.endMs - band.startMs) / 1000)})`;
           return (
             <div
               key={band.startMs}
               title={text}
               aria-hidden
               className="absolute inset-y-0 border-x border-white/70 dark:border-zinc-950/70"
-              style={{ left: `${band.leftPct}%`, width: `${band.widthPct}%`, ...status.style }}
+              style={{ left: `${band.leftPct}%`, width: `${band.widthPct}%`, ...COVERAGE_STATUS_STYLES[band.status] }}
             >
               {band.status !== "observed" && band.widthPct >= LABEL_MIN_PCT && (
                 <span className="pointer-events-none absolute left-1.5 top-1/2 max-w-[calc(100%-0.75rem)] -translate-y-1/2 truncate rounded bg-white/90 px-1.5 py-0.5 text-[11px] font-medium leading-none text-zinc-900">
-                  {status.label}
+                  {statusLabel}
                 </span>
               )}
             </div>
           );
         })}
         {day.markers.map((o) => {
-          const text = `${eventLabel(o.eventKey, o.eventLabel)}: ${formatRange(o.startMs, o.endMs, timeZone)}`;
+          const text = `${eventTypeLabel(o.eventKey, o.eventLabel)}: ${formatRange(o.startMs, o.endMs, timeZone)}`;
           return (
             <a
               key={o.id}
               href={`#obs-${o.id}`}
               title={text}
               aria-label={text}
-              className={`absolute inset-y-1.5 rounded-sm ring-2 ring-white transition-transform hover:scale-y-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 dark:ring-zinc-950 dark:focus-visible:outline-white ${
+              className={`absolute inset-y-1.5 rounded-sm ring-2 ring-white transition-transform hover:scale-y-110 motion-reduce:transition-none motion-reduce:hover:scale-y-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 dark:ring-zinc-950 dark:focus-visible:outline-white ${
                 isHollowMarker(o.eventKey) ? "border-2 border-zinc-950 bg-white dark:border-white dark:bg-zinc-950" : "bg-zinc-950 dark:bg-white"
               }`}
               style={{ left: `${o.leftPct}%`, width: `max(6px, ${o.widthPct}%)` }}
@@ -76,3 +76,6 @@ export function DayTimeline({ day, timeZone }: { day: TimelineDay; timeZone: str
     </figure>
   );
 }
+
+/** Drinking is drawn hollow, everything else solid, so the two read apart without colour. */
+export const isHollowMarker = (eventKey: string) => eventKey === "drinking_episode";

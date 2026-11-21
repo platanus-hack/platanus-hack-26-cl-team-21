@@ -2,16 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import {
-  COVERAGE_STATUS_LABELS,
-  formatDate,
-  formatDuration,
-  formatLocalDay,
-  label,
-  PARTICIPANT_STATUS_LABELS,
-  PROTOCOL_STATUS_LABELS,
-} from "@/components/format";
-import { getStudyOverview, type CoverageBreakdown, type StudyOverview } from "@/lib/queries/studies";
+import { formatDate, formatDuration, formatLocalDay } from "@/lib/format";
+import { COVERAGE_STATUS_LABELS, eventTypeLabel, label, PARTICIPANT_STATUS_LABELS, PROTOCOL_STATUS_LABELS } from "@/lib/labels";
+import type { CoverageBreakdown } from "@/lib/queries/coverage";
+import { getStudyOverview, type StudyOverview } from "@/lib/queries/studies";
 
 export default function StudyOverviewPage({ params }: PageProps<"/studies/[code]">) {
   return (
@@ -69,8 +63,8 @@ async function Overview({ params }: { params: PageProps<"/studies/[code]">["para
         <p className="max-w-3xl text-xs text-neutral-500">
           Los conteos incluyen las observaciones vigentes (no rechazadas en revisión humana) y solo provienen del tiempo
           observado. El tiempo no observado no equivale a ausencia de conducta: se muestra con su motivo. El periodo de
-          cada participante va desde su asignación al protocolo hasta hoy o su retiro; &quot;Sin registro&quot; es tiempo
-          de ese periodo sin datos subidos.
+          estudio de cada participante va desde su primera asignación a un protocolo hasta el fin de la última, su retiro
+          u hoy, lo que ocurra primero; “Sin registro” es tiempo de ese periodo sin datos subidos.
         </p>
       </section>
 
@@ -105,7 +99,7 @@ function ParticipantsTable({ study, base }: { study: StudyOverview; base: string
             <th className="py-2 pr-4 font-medium">Protocolo</th>
             {study.eventTypes.map((eventType) => (
               <th key={eventType.key} className="py-2 pr-4 text-right font-medium">
-                {eventType.label}
+                {eventTypeLabel(eventType.key, eventType.label)}
                 <span className="block font-mono text-xs font-normal">{eventType.key}</span>
               </th>
             ))}
@@ -153,7 +147,7 @@ function ParticipantsTable({ study, base }: { study: StudyOverview; base: string
 function DailyCoverageTable({ study, base }: { study: StudyOverview; base: string }) {
   const rows = study.participants.flatMap((participant) => participant.days.map((day) => ({ participant, day })));
   if (rows.length === 0) {
-    return <p className="text-sm text-neutral-500">Todavía no hay intervalos de cobertura registrados.</p>;
+    return <p className="text-sm text-neutral-500">Ningún participante tiene un periodo de estudio en curso o pasado (asignación a un protocolo).</p>;
   }
   return (
     <div className="overflow-x-auto">
@@ -197,7 +191,7 @@ function NotObservedMark() {
 
 function ObservedTime({ coverage }: { coverage: CoverageBreakdown }) {
   if (coverage.totalSeconds === 0) {
-    return <span className="text-neutral-500">Sin periodo ni cobertura registrados</span>;
+    return <span className="text-neutral-500">Sin periodo de estudio (sin protocolo asignado o aún no comienza)</span>;
   }
   if (coverage.observedSeconds === 0) {
     return (

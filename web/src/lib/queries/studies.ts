@@ -8,16 +8,10 @@ import {
   protocolVersions,
   sql,
   studies,
-  type COVERAGE_STATUS,
 } from "@observatorio/db";
+import { type CoverageBreakdown, type CoverageDayRow, getCoverageByDay, inObservedTime, summarizeCoverage } from "./coverage";
 
 // Read models for the study list and the study overview. Callers must `await connection()` first.
-
-export type CoverageStatus = (typeof COVERAGE_STATUS)[number];
-// Time inside the participant's study period with no coverage row at all (nothing uploaded).
-// ADR 0002 §5: it is shown as not observed, never as zero.
-export type NoRecord = "no_record";
-export type NotObservedStatus = Exclude<CoverageStatus, "observed"> | NoRecord;
 
 export type StudyListItem = {
   code: string;
@@ -49,17 +43,6 @@ export type ProtocolInUse = {
 
 export type EventTypeColumn = { key: string; label: string };
 
-/**
- * Seconds per coverage status, plus `no_record` for time inside the participant's study period
- * without any coverage row. Only statuses that actually occur are present.
- */
-export type CoverageBreakdown = {
-  /** Study period plus any coverage recorded outside it. */
-  totalSeconds: number;
-  observedSeconds: number;
-  notObserved: { status: NotObservedStatus; seconds: number }[];
-};
-
 export type ParticipantOverview = {
   id: string;
   pseudonym: string;
@@ -67,8 +50,9 @@ export type ParticipantOverview = {
   protocolLabel: string | null;
   /** Event type keys defined by the protocol versions this participant ran under. */
   measuredEventKeys: string[];
-  /** Current observations (v_current_observations) by event type key. */
+  /** Current observations (v_current_observations) in observed time (see inObservedTime), by event type key. */
   observationCounts: Record<string, number>;
+  /** Coverage inside the study period (see ./coverage); all zero when the participant has none. */
   coverage: CoverageBreakdown;
   /** Coverage per participant-local day (YYYY-MM-DD), oldest first. */
   days: ({ day: string } & CoverageBreakdown)[];
@@ -85,8 +69,10 @@ export type StudyOverview = {
   participants: ParticipantOverview[];
 };
 
-// Memoized per request: the study layout and its pages both look the study up.
-export const getStudyByCode = cache(async (code: string) => {
+export type Study = { id: string; code: string; title: string; description: string | null; status: string };
+
+// The one study-by-code lookup. Memoized per request: the study layout and its pages both call it.
+export const getStudyByCode = cache(async (code: string): Promise<Study | null> => {
   const [study] = await db
     .select({ id: studies.id, code: studies.code, title: studies.title, description: studies.description, status: studies.status })
     .from(studies)
@@ -102,8 +88,8 @@ export async function getStudyOverview(code: string): Promise<StudyOverview | nu
   const currentAssignment = sql`${participantProtocols.validFrom} <= now()
     and (${participantProtocols.validTo} is null or ${participantProtocols.validTo} > now())`;
 
-  // Plain tables go through the query builder; the view and the per-day coverage split
-  // (generate_series) are raw SQL.
+  // Plain tables go through the query builder; the view is raw SQL and coverage comes from the
+  // shared study-period helper (./coverage).
   const [protocolsInUse, eventTypeColumns, participantRows, measured, counts, coverage] = await Promise.all([
     db
       .select({
@@ -149,51 +135,10 @@ export async function getStudyOverview(code: string): Promise<StudyOverview | nu
       from v_current_observations o
       join participants p on p.id = o.participant_id
       join event_types et on et.id = o.event_type_id
-      where p.study_id = ${study.id}
+      where p.study_id = ${study.id} and ${inObservedTime("o")}
       group by 1, 2`),
-    // Coverage per status and participant-local day, split at local midnights so each day adds up
-    // even across midnight or a DST change. The study period of a participant runs from their first
-    // protocol assignment to the end of the last one, now, or their withdrawal, whichever is first;
-    // the part of it with no coverage row comes back as `no_record`.
-    db.execute<{ participantId: string; day: string; status: CoverageStatus | NoRecord; seconds: number }>(sql`
-      with period as (
-        select p.id as participant_id,
-               tstzrange(min(pp.valid_from), greatest(min(pp.valid_from), least(
-                 max(coalesce(pp.valid_to, 'infinity')), now(), coalesce(p.withdrawn_at, 'infinity')))) as r
-        from participants p
-        join participant_protocols pp on pp.participant_id = p.id
-        where p.study_id = ${study.id}
-        group by p.id
-      ),
-      spans as (
-        select c.participant_id, c.status, tstzrange(c.started_at, c.ended_at) as r
-        from coverage_intervals c
-        join participants p on p.id = c.participant_id
-        where p.study_id = ${study.id}
-      ),
-      days as (
-        select distinct x.participant_id, d.day,
-               tstzrange(d.day at time zone p.timezone, (d.day + interval '1 day') at time zone p.timezone) as r
-        from (select participant_id, r from spans union all select participant_id, r from period where not isempty(r)) x
-        join participants p on p.id = x.participant_id
-        cross join lateral generate_series(
-          date_trunc('day', lower(x.r) at time zone p.timezone),
-          (upper(x.r) - interval '1 microsecond') at time zone p.timezone,
-          interval '1 day') as d(day)
-      )
-      select d.participant_id as "participantId", to_char(d.day, 'YYYY-MM-DD') as day, s.status,
-             sum(extract(epoch from upper(s.r * d.r) - lower(s.r * d.r)))::float8 as seconds
-      from days d
-      join spans s on s.participant_id = d.participant_id and s.r && d.r
-      group by 1, 2, 3
-      union all
-      select d.participant_id, to_char(d.day, 'YYYY-MM-DD'), 'no_record',
-             (extract(epoch from upper(pe.r * d.r) - lower(pe.r * d.r))
-               - coalesce(sum(extract(epoch from upper(s.r * d.r * pe.r) - lower(s.r * d.r * pe.r))), 0))::float8
-      from days d
-      join period pe on pe.participant_id = d.participant_id and pe.r && d.r
-      left join spans s on s.participant_id = d.participant_id and s.r && (d.r * pe.r)
-      group by d.participant_id, d.day, d.r, pe.r`),
+    // Coverage per status and participant-local day inside each participant's study period.
+    getCoverageByDay(sql`p.study_id = ${study.id}`),
   ]);
 
   const countsByParticipant = new Map<string, Record<string, number>>();
@@ -208,14 +153,13 @@ export async function getStudyOverview(code: string): Promise<StudyOverview | nu
     measuredByParticipant.set(row.participantId, [...(measuredByParticipant.get(row.participantId) ?? []), row.key]);
   }
 
-  const coverageByParticipant = new Map<string, Map<string, StatusSeconds>>();
-  for (const row of coverage.rows) {
-    // Sub-second remainders of the no_record subtraction are float noise, not missing time.
-    if (row.seconds < 1) continue;
-    const byDay = coverageByParticipant.get(row.participantId) ?? new Map<string, StatusSeconds>();
-    const byStatus = byDay.get(row.day) ?? new Map<CoverageStatus | NoRecord, number>();
-    byStatus.set(row.status, (byStatus.get(row.status) ?? 0) + row.seconds);
-    byDay.set(row.day, byStatus);
+  // participant id → local day → rows, built in one pass.
+  const coverageByParticipant = new Map<string, Map<string, CoverageDayRow[]>>();
+  for (const row of coverage) {
+    const byDay = coverageByParticipant.get(row.participantId) ?? new Map<string, CoverageDayRow[]>();
+    const dayRows = byDay.get(row.day) ?? [];
+    dayRows.push(row);
+    byDay.set(row.day, dayRows);
     coverageByParticipant.set(row.participantId, byDay);
   }
 
@@ -224,32 +168,17 @@ export async function getStudyOverview(code: string): Promise<StudyOverview | nu
     protocolsInUse,
     eventTypes: eventTypeColumns,
     participants: participantRows.map((p) => {
-      const byDay = coverageByParticipant.get(p.id) ?? new Map<string, StatusSeconds>();
-      const days = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, byStatus]) => ({ day, ...breakdown(byStatus) }));
-      const total: StatusSeconds = new Map();
-      for (const byStatus of byDay.values()) {
-        for (const [status, seconds] of byStatus) total.set(status, (total.get(status) ?? 0) + seconds);
-      }
+      const byDay = coverageByParticipant.get(p.id) ?? new Map<string, CoverageDayRow[]>();
+      const days = [...byDay.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([day, dayRows]) => ({ day, ...summarizeCoverage(dayRows) }));
       return {
         ...p,
         measuredEventKeys: measuredByParticipant.get(p.id) ?? [],
         observationCounts: countsByParticipant.get(p.id) ?? {},
-        coverage: breakdown(total),
+        coverage: summarizeCoverage([...byDay.values()].flat()),
         days,
       };
     }),
   };
-}
-
-type StatusSeconds = Map<CoverageStatus | NoRecord, number>;
-
-function breakdown(byStatus: StatusSeconds): CoverageBreakdown {
-  let totalSeconds = 0;
-  const notObserved: CoverageBreakdown["notObserved"] = [];
-  for (const [status, seconds] of byStatus) {
-    totalSeconds += seconds;
-    if (status !== "observed") notObserved.push({ status, seconds });
-  }
-  notObserved.sort((a, b) => b.seconds - a.seconds);
-  return { totalSeconds, observedSeconds: byStatus.get("observed") ?? 0, notObserved };
 }

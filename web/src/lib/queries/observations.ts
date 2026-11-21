@@ -1,4 +1,6 @@
-import { COVERAGE_STATUS, db, eq, sql, studies } from "@observatorio/db";
+import { db, sql } from "@observatorio/db";
+import type { VisibleReviewStatus } from "@/lib/labels";
+import { type CoverageBreakdown, getCoverageByDay, inObservedTime, studyPeriods, summarizeCoverage } from "./coverage";
 
 type SQL = ReturnType<typeof sql>;
 
@@ -6,28 +8,12 @@ type SQL = ReturnType<typeof sql>;
 // v_current_observations (not superseded, latest human review applied, rejected hidden).
 // Callers must `await connection()` before using them.
 
-export type CoverageStatus = (typeof COVERAGE_STATUS)[number];
-
-// Review statuses that can appear in v_current_observations ('rejected' rows are hidden by the view).
-export const VISIBLE_REVIEW_STATUSES = ["pending", "confirmed", "corrected"] as const;
-export type VisibleReviewStatus = (typeof VISIBLE_REVIEW_STATUSES)[number];
-
 export type ObservationFilters = {
   participant?: string; // pseudonym
   eventType?: string; // event_types.key, stable across protocol versions
   reviewStatus?: VisibleReviewStatus;
   date?: string; // YYYY-MM-DD, the participant's local day
 };
-
-export type StudyRef = { id: string; code: string; title: string };
-
-export async function findStudyByCode(code: string): Promise<StudyRef | null> {
-  const [study] = await db
-    .select({ id: studies.id, code: studies.code, title: studies.title })
-    .from(studies)
-    .where(eq(studies.code, code));
-  return study ?? null;
-}
 
 export type FilterOptions = {
   participants: { pseudonym: string; timezone: string }[];
@@ -45,17 +31,19 @@ export async function getObservationFilterOptions(studyId: string): Promise<Filt
       join protocol_versions pv on pv.id = et.protocol_version_id
       where pv.study_id = ${studyId}
       order by et.key, pv.created_at desc`),
-    // Local days with any coverage record or observation, in each participant's time zone.
+    // Local days inside any participant's study period or with an observation, in each
+    // participant's time zone.
     db.execute<{ day: string }>(sql`
-      select distinct to_char(t at time zone p.timezone, 'YYYY-MM-DD') as day
-      from participants p
-      cross join lateral (
-        select c.started_at from coverage_intervals c where c.participant_id = p.id
-        union all
-        select c.ended_at - interval '1 microsecond' from coverage_intervals c where c.participant_id = p.id
-        union all
-        select o.started_at from v_current_observations o where o.participant_id = p.id
-      ) x(t)
+      select to_char(d.day, 'YYYY-MM-DD') as day
+      from (${studyPeriods(sql`p.study_id = ${studyId}`)}) pe
+      cross join lateral generate_series(
+        date_trunc('day', lower(pe.r) at time zone pe.timezone),
+        (upper(pe.r) - interval '1 microsecond') at time zone pe.timezone,
+        interval '1 day') as d(day)
+      union
+      select to_char(o.started_at at time zone p.timezone, 'YYYY-MM-DD')
+      from v_current_observations o
+      join participants p on p.id = o.participant_id
       where p.study_id = ${studyId}
       order by day`),
   ]);
@@ -84,6 +72,8 @@ export type ObservationRow = {
   model_version: string;
   pipeline_version: string;
   protocol_version: string;
+  /** Overlaps observed time in the study period, so it counts (same rule as the overview and timeline). */
+  in_observed_time: boolean;
 };
 
 function participantScope(studyId: string, filters: ObservationFilters): SQL {
@@ -121,7 +111,8 @@ export async function listObservations(studyId: string, filters: ObservationFilt
            r.model_name,
            r.model_version,
            r.pipeline_version,
-           pv.version_label as protocol_version
+           pv.version_label as protocol_version,
+           ${inObservedTime("o")} as in_observed_time
     from v_current_observations o
     join participants p on p.id = o.participant_id
     join event_types et on et.id = o.event_type_id
@@ -132,66 +123,28 @@ export async function listObservations(studyId: string, filters: ObservationFilt
   return result.rows;
 }
 
-export type CoverageSummary = {
-  // Seconds per coverage status inside the scope, clipped to the selected day when there is one.
-  byStatus: Record<CoverageStatus, number>;
-  // Seconds in the scope with no coverage record at all: unknown, so also not observed.
-  unrecordedSeconds: number;
-  totalSeconds: number;
+export type CoverageSummary = CoverageBreakdown & {
   participantCount: number;
-  // Participants in scope without any coverage record (only possible without a date filter): their
-  // time can't be measured, so it is not part of totalSeconds and must be reported separately.
-  participantsWithoutCoverage: number;
+  // Participants in scope without any protocol assignment have no study period: their time can't
+  // be measured, so it is not part of the totals and is reported separately.
+  participantsWithoutPeriod: number;
 };
 
 // Coverage depends on who and when, not on event type or review status. The scope is each
-// participant's local day when a date is selected; otherwise the span from their first to their
-// last coverage record, so a participant with no records at all adds no time and is counted apart.
+// participant's study period (see ./coverage), restricted to their local day when a date is selected.
 export async function getCoverageSummary(studyId: string, filters: ObservationFilters): Promise<CoverageSummary> {
-  const window = filters.date
-    ? sql`${localDayStart(filters.date)} as w_from, ${localDayEnd(filters.date)} as w_to`
-    : sql`span.w_from, span.w_to`;
-
-  const result = await db.execute<{ status: CoverageStatus | null; seconds: number; total_seconds: number; participant_count: number; without_coverage: number }>(sql`
-    with scope as (
-      select p.id, ${window}
+  const scope = participantScope(studyId, filters);
+  const [rows, counts] = await Promise.all([
+    getCoverageByDay(scope, filters.date),
+    db.execute<{ participant_count: number; without_period: number }>(sql`
+      select count(*)::int as participant_count,
+             (count(*) filter (where p.id not in (select participant_id from (${studyPeriods(scope)}) pe)))::int as without_period
       from participants p
-      left join lateral (
-        select min(c.started_at) as w_from, max(c.ended_at) as w_to
-        from coverage_intervals c where c.participant_id = p.id
-      ) span on true
-      where ${participantScope(studyId, filters)}
-    ),
-    clipped as (
-      select c.status,
-             extract(epoch from least(c.ended_at, s.w_to) - greatest(c.started_at, s.w_from)) as seconds
-      from scope s
-      join coverage_intervals c on c.participant_id = s.id
-       and c.ended_at > s.w_from and c.started_at < s.w_to
-    ),
-    totals as (
-      select coalesce(sum(extract(epoch from w_to - w_from)), 0)::float8 as total_seconds,
-             count(*)::int as participant_count,
-             (count(*) filter (where w_from is null))::int as without_coverage
-      from scope
-    )
-    select g.status, g.seconds, t.total_seconds, t.participant_count, t.without_coverage
-    from totals t
-    left join (select status, sum(seconds)::float8 as seconds from clipped group by status) g on true`);
-
-  const byStatus = Object.fromEntries(COVERAGE_STATUS.map((status) => [status, 0])) as Record<CoverageStatus, number>;
-  let recorded = 0;
-  for (const row of result.rows) {
-    if (!row.status) continue;
-    byStatus[row.status] = row.seconds;
-    recorded += row.seconds;
-  }
-  const totalSeconds = result.rows[0]?.total_seconds ?? 0;
+      where ${scope}`),
+  ]);
   return {
-    byStatus,
-    unrecordedSeconds: Math.max(0, totalSeconds - recorded),
-    totalSeconds,
-    participantCount: result.rows[0]?.participant_count ?? 0,
-    participantsWithoutCoverage: result.rows[0]?.without_coverage ?? 0,
+    ...summarizeCoverage(rows),
+    participantCount: counts.rows[0]?.participant_count ?? 0,
+    participantsWithoutPeriod: counts.rows[0]?.without_period ?? 0,
   };
 }

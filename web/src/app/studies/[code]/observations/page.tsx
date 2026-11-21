@@ -2,28 +2,33 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { formatConfidence, formatDuration, formatLocalDay, plural } from "@/lib/format";
+import {
+  eventTypeLabel,
+  formatAttributes,
+  label,
+  REVIEW_STATUS_BADGE_CLASS,
+  REVIEW_STATUS_LABELS,
+  VISIBLE_REVIEW_STATUSES,
+} from "@/lib/labels";
 import {
   type FilterOptions,
-  findStudyByCode,
   getCoverageSummary,
   getObservationFilterOptions,
   listObservations,
   type ObservationFilters,
   type ObservationRow,
-  VISIBLE_REVIEW_STATUSES,
-  type VisibleReviewStatus,
 } from "@/lib/queries/observations";
+import { getStudyByCode } from "@/lib/queries/studies";
 import { CoverageNote } from "./coverage-note";
 import { FILTER_PARAMS, ObservationFiltersForm } from "./filters";
-import { eventTypeLabel, formatAttributes, formatConfidence, formatDuration, REVIEW_STATUS_LABEL } from "./format";
 
 type Props = PageProps<"/studies/[code]/observations">;
 type SearchParams = Awaited<Props["searchParams"]>;
 
 export default function ObservationsPage({ params, searchParams }: Props) {
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-6">
-      <h1 className="text-2xl font-semibold">Observaciones</h1>
+    <div className="flex flex-col gap-6">
       <Suspense fallback={<p className="text-sm text-zinc-500">Cargando observaciones…</p>}>
         <ObservationsContent params={params} searchParams={searchParams} />
       </Suspense>
@@ -34,25 +39,33 @@ export default function ObservationsPage({ params, searchParams }: Props) {
 async function ObservationsContent({ params, searchParams }: Props) {
   await connection();
   const { code } = await params;
-  const study = await findStudyByCode(code);
+  const study = await getStudyByCode(code);
   if (!study) notFound();
 
   const [options, query] = await Promise.all([getObservationFilterOptions(study.id), searchParams]);
   const filters = parseFilters(query, options);
   const [rows, coverage] = await Promise.all([listObservations(study.id, filters), getCoverageSummary(study.id, filters)]);
   const basePath = `/studies/${encodeURIComponent(study.code)}`;
+  const counted = rows.filter((row) => row.in_observed_time).length;
 
   return (
     <>
-      <p className="-mt-4 text-sm text-zinc-600">
-        {study.title} <span className="font-mono text-xs">({study.code})</span>
-      </p>
       <ObservationFiltersForm action={`${basePath}/observations`} options={options} filters={filters} />
       <CoverageNote coverage={coverage} scope={describeScope(filters, coverage.participantCount)} />
-      <p className="text-sm text-zinc-600">
-        {rows.length === 1 ? "1 observación" : `${rows.length} observaciones`} en tiempo observado, ordenadas por hora de inicio. Hora
-        local de cada participante.
-      </p>
+      {/* Never a count of 0 for a scope with no observed time: nothing could have been detected there. */}
+      {(rows.length > 0 || coverage.observedSeconds > 0) && (
+        <p className="text-sm text-zinc-600">
+          {[
+            coverage.observedSeconds > 0 || counted > 0 ? `${plural(counted, "observación", "observaciones")} en tiempo observado` : null,
+            counted < rows.length
+              ? plural(rows.length - counted, "fuera del tiempo observado (no entra en los conteos)", "fuera del tiempo observado (no entran en los conteos)")
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" y ")}
+          , ordenadas por hora de inicio. Hora local de cada participante.
+        </p>
+      )}
       {rows.length === 0 ? (
         <p className="rounded-lg border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-600">
           No hay observaciones actuales para estos filtros. Revisa la cobertura: sin tiempo observado no se pueden detectar episodios.
@@ -97,17 +110,22 @@ function ObservationTable({ rows, basePath }: { rows: ObservationRow[]; basePath
                 </Link>
                 <span className="block text-xs text-zinc-500">{row.timezone}</span>
               </td>
-              <td className="px-3 py-2 tabular-nums whitespace-nowrap">{row.local_date}</td>
+              <td className="px-3 py-2 tabular-nums whitespace-nowrap" title={row.local_date}>
+                {formatLocalDay(row.local_date)}
+              </td>
               <td className="px-3 py-2 tabular-nums whitespace-nowrap">
                 {row.local_start}–{row.local_end}
-                {row.local_end_date !== row.local_date && <span className="text-xs text-zinc-500"> ({row.local_end_date})</span>}
+                {row.local_end_date !== row.local_date && <span className="text-xs text-zinc-500"> ({formatLocalDay(row.local_end_date)})</span>}
               </td>
               <td className="px-3 py-2 tabular-nums whitespace-nowrap">{formatDuration(row.duration_s)}</td>
-              <td className="px-3 py-2">{eventTypeLabel(row.event_type_key, row.event_type_label)}</td>
+              <td className="px-3 py-2">
+                {eventTypeLabel(row.event_type_key, row.event_type_label)}
+                {!row.in_observed_time && <span className="block text-xs text-amber-800">Fuera del tiempo observado</span>}
+              </td>
               <td className="px-3 py-2">
                 <dl className="grid grid-cols-[auto_1fr] gap-x-2 text-xs">
                   {formatAttributes(row.attributes).map((item) => (
-                    <div key={item.label} className="contents">
+                    <div key={item.key} className="contents">
                       <dt className="text-zinc-500">{item.label}</dt>
                       <dd>{item.value}</dd>
                     </div>
@@ -131,14 +149,12 @@ function ObservationTable({ rows, basePath }: { rows: ObservationRow[]; basePath
   );
 }
 
-const REVIEW_BADGE_CLASS: Record<VisibleReviewStatus, string> = {
-  pending: "bg-zinc-100 text-zinc-700",
-  confirmed: "bg-emerald-100 text-emerald-800",
-  corrected: "bg-sky-100 text-sky-800",
-};
-
-function ReviewBadge({ status }: { status: VisibleReviewStatus }) {
-  return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${REVIEW_BADGE_CLASS[status]}`}>{REVIEW_STATUS_LABEL[status]}</span>;
+function ReviewBadge({ status }: { status: string }) {
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${REVIEW_STATUS_BADGE_CLASS[status] ?? REVIEW_STATUS_BADGE_CLASS.pending}`}>
+      {label(REVIEW_STATUS_LABELS, status)}
+    </span>
+  );
 }
 
 function first(value: string | string[] | undefined) {
@@ -163,6 +179,6 @@ function parseFilters(query: SearchParams, options: FilterOptions): ObservationF
 
 function describeScope(filters: ObservationFilters, participantCount: number) {
   const who = filters.participant ?? (participantCount === 1 ? "1 participante" : `${participantCount} participantes`);
-  const when = filters.date ? `día local ${filters.date}` : "todo el periodo registrado";
+  const when = filters.date ? `día local ${formatLocalDay(filters.date)}` : "todo el periodo de estudio";
   return `${who}, ${when}`;
 }

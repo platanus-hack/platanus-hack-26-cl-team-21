@@ -1,13 +1,17 @@
-import { type COVERAGE_STATUS, db, sql } from "@observatorio/db";
+import { db, sql } from "@observatorio/db";
+import { type CoverageBandStatus, type CoverageStatus, type NotObservedStatus, SENSOR_ORDER } from "@/lib/labels";
+import { getStudyPeriod, type StudyPeriod, studyPeriods } from "./coverage";
+import { getStudyByCode } from "./studies";
 
 // Data for the participant timeline page: one row of coverage bands per local day (participant
-// timezone) with the current observations on top, plus the per-day summary. Instants travel as
+// timezone) with the current observations on top, plus the per-day summary. Days and coverage use
+// the shared study period (./coverage), so the totals match the overview and the observation
+// list. Instants travel as
 // epoch milliseconds (float8) so raw `sql` rows don't depend on the driver's timestamp parsing.
 // Callers must `await connection()` before calling this.
 
-export type CoverageStatus = (typeof COVERAGE_STATUS)[number];
-/** A stretch of the day with no coverage interval at all: unknown, so it is never "observed". */
-export type BandStatus = CoverageStatus | "no_record";
+/** `no_record`: a stretch of the study period with no coverage interval at all, so never "observed". */
+export type BandStatus = CoverageBandStatus;
 
 export type ProtocolAssignment = { label: string; fromMs: number; toMs: number | null };
 
@@ -59,9 +63,10 @@ export type PlacedObservation = TimelineObservation & {
 export type EventCount = { eventKey: string; eventLabel: string; count: number; observedMs: number };
 
 export type DaySummary = {
-  dayMs: number;
+  /** Part of the day inside the study period; 0 for a day outside it (listed only for its observations). */
+  periodMs: number;
   observedMs: number;
-  notObserved: { status: Exclude<BandStatus, "observed">; ms: number }[];
+  notObserved: { status: NotObservedStatus; ms: number }[];
   /** Episodes counted over observed time only (an episode counts if it overlaps observed time). */
   counts: EventCount[];
   /** Episodes listed this day that have no overlap with observed time: not counted. */
@@ -72,6 +77,8 @@ export type TimelineDay = {
   day: string; // YYYY-MM-DD, participant's local day
   startMs: number;
   endMs: number;
+  /** The part of the day inside the study period, or null if none of it is. Bands only cover this. */
+  period: { startMs: number; endMs: number } | null;
   bands: Band[];
   /** Observations overlapping the day, positioned (clipped) on its bar. */
   markers: PlacedObservation[];
@@ -83,6 +90,8 @@ export type TimelineDay = {
 export type ParticipantTimeline = {
   participant: { id: string; pseudonym: string; status: string; timezone: string; arm: string | null };
   study: { code: string; title: string };
+  /** Null when the participant has no protocol assignment. */
+  period: StudyPeriod | null;
   protocols: ProtocolAssignment[];
   devices: DeviceAssignment[];
   runs: { modelVersion: string; pipelineVersion: string }[];
@@ -92,23 +101,17 @@ export type ParticipantTimeline = {
 const epochMs = (column: string) => sql.raw(`(extract(epoch from ${column}) * 1000)::float8`);
 
 export async function getParticipantTimeline(studyCode: string, pseudonym: string): Promise<ParticipantTimeline | null> {
-  const found = await db.execute<{
-    id: string;
-    pseudonym: string;
-    status: string;
-    timezone: string;
-    arm: string | null;
-    studyCode: string;
-    studyTitle: string;
-  }>(sql`
-    select p.id, p.pseudonym, p.status, p.timezone, p.arm, s.code as "studyCode", s.title as "studyTitle"
+  const study = await getStudyByCode(studyCode);
+  if (!study) return null;
+  const found = await db.execute<{ id: string; pseudonym: string; status: string; timezone: string; arm: string | null }>(sql`
+    select p.id, p.pseudonym, p.status, p.timezone, p.arm
     from participants p
-    join studies s on s.id = p.study_id
-    where s.code = ${studyCode} and p.pseudonym = ${pseudonym}`);
+    where p.study_id = ${study.id} and p.pseudonym = ${pseudonym}`);
   const p = found.rows[0];
   if (!p) return null;
 
-  const [protocols, devices, coverage, observations, sensorRows, days] = await Promise.all([
+  const [period, protocols, devices, coverage, observations, sensorRows, days] = await Promise.all([
+    getStudyPeriod(p.id),
     db.execute<ProtocolAssignment>(sql`
       select pv.version_label as "label", ${epochMs("pp.valid_from")} as "fromMs", ${epochMs("pp.valid_to")} as "toMs"
       from participant_protocols pp
@@ -155,26 +158,24 @@ export async function getParticipantTimeline(studyCode: string, pseudonym: strin
       from v_current_observations o
       cross join lateral sensor_window_stats(o.participant_id, o.started_at, o.ended_at) s
       where o.participant_id = ${p.id}`),
-    // Local days spanned by the participant's coverage and observations, with their real bounds
-    // (DST days are 23 h / 25 h long).
+    // Every local day of the study period (a day without data is fully "Sin registro"), plus any
+    // day with an observation outside the period so no observation is hidden. Real bounds: DST
+    // days are 23 h / 25 h long.
     db.execute<{ day: string; startMs: number; endMs: number }>(sql`
       with b as (
-        select min(t0) as lo, max(t1) as hi from (
-          select started_at as t0, ended_at as t1 from coverage_intervals where participant_id = ${p.id}
-          union all
-          select started_at, ended_at from v_current_observations where participant_id = ${p.id}
-        ) x
+        select lower(r) as lo, upper(r) as hi from (${studyPeriods(sql`p.id = ${p.id}`)}) pe
+        union all
+        select started_at, greatest(ended_at, started_at + interval '1 microsecond')
+        from v_current_observations where participant_id = ${p.id}
       )
-      select to_char(dd.d, 'YYYY-MM-DD') as "day",
-             (extract(epoch from (dd.d::timestamp at time zone ${p.timezone})) * 1000)::float8 as "startMs",
-             (extract(epoch from ((dd.d + 1)::timestamp at time zone ${p.timezone})) * 1000)::float8 as "endMs"
+      select distinct to_char(g.ts, 'YYYY-MM-DD') as "day",
+             (extract(epoch from (g.ts at time zone ${p.timezone})) * 1000)::float8 as "startMs",
+             (extract(epoch from ((g.ts + interval '1 day') at time zone ${p.timezone})) * 1000)::float8 as "endMs"
       from b
       cross join lateral generate_series(
-        (b.lo at time zone ${p.timezone})::date::timestamp,
-        ((b.hi - interval '1 microsecond') at time zone ${p.timezone})::date::timestamp,
+        date_trunc('day', b.lo at time zone ${p.timezone}),
+        (b.hi - interval '1 microsecond') at time zone ${p.timezone},
         interval '1 day') as g(ts)
-      cross join lateral (select g.ts::date as d) dd
-      where b.lo is not null
       order by 1`),
   ]);
 
@@ -195,15 +196,24 @@ export async function getParticipantTimeline(studyCode: string, pseudonym: strin
 
   return {
     participant: { id: p.id, pseudonym: p.pseudonym, status: p.status, timezone: p.timezone, arm: p.arm },
-    study: { code: p.studyCode, title: p.studyTitle },
+    study: { code: study.code, title: study.title },
+    period,
     protocols: protocols.rows,
     devices: devices.rows,
     runs: [...runs.values()],
-    days: days.rows.map((d) => buildDay(d, coverage.rows, allObservations)),
+    days: days.rows.map((d) => buildDay(d, period, clipToPeriod(coverage.rows, period), allObservations)),
   };
 }
 
-const SENSOR_ORDER = ["temperature_c", "humidity_pct", "sound_level_raw", "co_raw", "flammable_gas_raw", "battery_mv"];
+type CoverageSpan = { status: CoverageStatus; startMs: number; endMs: number };
+
+/** Coverage outside the study period is not counted anywhere (same rule as ./coverage). */
+function clipToPeriod(coverage: CoverageSpan[], period: StudyPeriod | null): CoverageSpan[] {
+  if (!period) return [];
+  return coverage
+    .map((c) => ({ ...c, startMs: Math.max(c.startMs, period.fromMs), endMs: Math.min(c.endMs, period.toMs) }))
+    .filter((c) => c.endMs > c.startMs);
+}
 
 function sortSensors(stats: SensorStat[]) {
   const rank = (key: string) => (SENSOR_ORDER.includes(key) ? SENSOR_ORDER.indexOf(key) : SENSOR_ORDER.length);
@@ -215,19 +225,25 @@ const overlap = (a0: number, a1: number, b0: number, b1: number) => Math.max(0, 
 /** Whether [a0, a1) touches [b0, b1); a zero-length episode counts if its instant is inside. */
 const touches = (a0: number, a1: number, b0: number, b1: number) => (a1 > a0 ? a0 < b1 && b0 < a1 : a0 >= b0 && a0 < b1);
 
+/** `coverage` must already be clipped to `period`. */
 export function buildDay(
   day: { day: string; startMs: number; endMs: number },
-  coverage: { status: CoverageStatus; startMs: number; endMs: number }[],
+  period: StudyPeriod | null,
+  coverage: CoverageSpan[],
   observations: TimelineObservation[],
 ): TimelineDay {
   const { startMs, endMs } = day;
   const dayMs = endMs - startMs;
   const pct = (ms: number) => ((ms - startMs) / dayMs) * 100;
+  const periodStartMs = Math.max(startMs, period?.fromMs ?? Infinity);
+  const periodEndMs = Math.min(endMs, period?.toMs ?? -Infinity);
+  const inPeriod = periodEndMs > periodStartMs ? { startMs: periodStartMs, endMs: periodEndMs } : null;
 
-  // Coverage clipped to the day; any stretch without an interval becomes an explicit "no_record".
-  // Touching intervals with the same status (e.g. consecutive observed segments) merge into one band.
+  // Coverage clipped to the day; any stretch of the study period without an interval becomes an
+  // explicit "no_record". Time outside the period gets no band. Touching intervals with the same
+  // status (e.g. consecutive observed segments) merge into one band.
   const bands: Band[] = [];
-  let cursor = startMs;
+  let cursor = inPeriod?.startMs ?? endMs;
   const push = (status: BandStatus, from: number, to: number) => {
     if (to <= from) return;
     const last = bands.at(-1);
@@ -246,7 +262,7 @@ export function buildDay(
     push(c.status, from, to);
     cursor = Math.max(cursor, to);
   }
-  push("no_record", cursor, endMs);
+  if (inPeriod) push("no_record", cursor, inPeriod.endMs);
 
   // Coverage over the whole timeline (not just this day) decides whether an episode was observed.
   const place = (o: TimelineObservation): PlacedObservation => {
@@ -277,7 +293,7 @@ export function buildDay(
   const byStatus = new Map<BandStatus, number>();
   for (const b of bands) byStatus.set(b.status, (byStatus.get(b.status) ?? 0) + (b.endMs - b.startMs));
   const notObserved = [...byStatus.entries()]
-    .filter((e): e is [Exclude<BandStatus, "observed">, number] => e[0] !== "observed")
+    .filter((e): e is [NotObservedStatus, number] => e[0] !== "observed")
     .map(([status, ms]) => ({ status, ms }))
     .sort((a, b) => b.ms - a.ms);
 
@@ -298,11 +314,12 @@ export function buildDay(
     day: day.day,
     startMs,
     endMs,
+    period: inPeriod,
     bands,
     markers,
     observations: own,
     summary: {
-      dayMs,
+      periodMs: inPeriod ? inPeriod.endMs - inPeriod.startMs : 0,
       observedMs: byStatus.get("observed") ?? 0,
       notObserved,
       counts: [...counts.values()].sort((a, b) => a.eventKey.localeCompare(b.eventKey)),
