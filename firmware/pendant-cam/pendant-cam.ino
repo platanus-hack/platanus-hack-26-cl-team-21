@@ -58,15 +58,33 @@ uint64_t sessionStartEpochMs = 0;
 // Clock: RTC epoch from the Uno, mapped onto local millis()
 bool clockOk = false;
 int64_t epochOffsetMs = 0;  // epoch_ms = millis() + epochOffsetMs
+int64_t nextWindowMaxMs = 0;
+unsigned long clockWindowStartMs = 0;
+const unsigned long CLOCK_WINDOW_MS = 10UL * 60UL * 1000UL;
+const int64_t CLOCK_RESET_MS = 2000;
+bool bootEventPending = false;  // CAM_BOOT is logged once the clock is known
 String lastSensorLine;
 long lastBattMv = -1;
 uint32_t badChecksums = 0;
+
+// Commands to the Uno are resent until acknowledged ("A,<NAME>,OK").
+const uint8_t CMD_QUEUE_SIZE = 4;
+const uint8_t CMD_MAX_TRIES = 10;
+const unsigned long CMD_RETRY_MS = 300;
+String cmdQueue[CMD_QUEUE_SIZE];
+uint8_t cmdHead = 0, cmdCount = 0, cmdTries = 0;
+unsigned long cmdLastSentMs = 0;
+uint32_t droppedCommands = 0;
+String lastAck;
+
+const char *CURRENT_SESSION_PATH = "/current_session";
 
 char rxBuf[128];
 size_t rxLen = 0;
 
 // ---------- Helpers ----------
 void sendJson(int code, const String &body);
+void stopSession();
 uint64_t nowEpochMs() { return clockOk ? (uint64_t)((int64_t)millis() + epochOffsetMs) : 0; }
 
 uint8_t checksum(const char *s) {
@@ -80,6 +98,34 @@ void sendCommand(const String &payload) {
   snprintf(tail, sizeof(tail), "*%02X", checksum(payload.c_str()));
   hubLink.print(payload);
   hubLink.println(tail);
+}
+
+bool enqueueCommand(const String &payload) {
+  if (cmdCount == CMD_QUEUE_SIZE) return false;
+  cmdQueue[(cmdHead + cmdCount) % CMD_QUEUE_SIZE] = payload;
+  cmdCount++;
+  return true;
+}
+
+void popCommand() {
+  cmdQueue[cmdHead] = "";
+  cmdHead = (cmdHead + 1) % CMD_QUEUE_SIZE;
+  cmdCount--;
+  cmdTries = 0;
+}
+
+void serviceCommands() {
+  if (cmdCount == 0) return;
+  if (cmdTries > 0 && millis() - cmdLastSentMs < CMD_RETRY_MS) return;
+  if (cmdTries >= CMD_MAX_TRIES) {
+    Serial.printf("command dropped after %u tries: %s\n", CMD_MAX_TRIES, cmdQueue[cmdHead].c_str());
+    droppedCommands++;
+    popCommand();
+    return;
+  }
+  sendCommand(cmdQueue[cmdHead]);
+  cmdTries++;
+  cmdLastSentMs = millis();
 }
 
 void appendLine(const String &path, const String &line) {
@@ -109,6 +155,29 @@ void writeSessionJson(bool ended) {
 }
 
 // ---------- Uno link ----------
+String field(const String &line, int n);
+
+// Each line's epoch is truncated to whole seconds and read before it was sent, so every
+// candidate offset is a lower bound of the true one: keep the maximum over a sliding window
+// (two 10-minute buckets, so slow drift is tracked). Accuracy: ~0.1–0.2 s instead of ±1 s.
+// A jump of more than 2 s (first fix, RTC_SET, stale backlog) resets the estimate.
+void updateClock(uint32_t epoch) {
+  int64_t cand = (int64_t)epoch * 1000 - (int64_t)millis();
+  if (!clockOk || llabs(cand - epochOffsetMs) > CLOCK_RESET_MS) {
+    epochOffsetMs = nextWindowMaxMs = cand;
+    clockWindowStartMs = millis();
+    clockOk = true;
+    return;
+  }
+  if (cand > epochOffsetMs) epochOffsetMs = cand;
+  if (cand > nextWindowMaxMs) nextWindowMaxMs = cand;
+  if (millis() - clockWindowStartMs > CLOCK_WINDOW_MS) {
+    epochOffsetMs = nextWindowMaxMs;
+    nextWindowMaxMs = cand;
+    clockWindowStartMs = millis();
+  }
+}
+
 // Fields are comma-separated; returns the n-th field (0-based) of a line.
 String field(const String &line, int n) {
   int start = 0;
@@ -131,17 +200,26 @@ void handleHubLine(char *raw) {
   }
   String line(raw);
   char type = line.charAt(0);
+  if (type == 'A') {
+    lastAck = line;
+    // "A,<NAME>,OK" acknowledges the queued "C,<NAME>,..." command.
+    if (cmdCount > 0 && field(cmdQueue[cmdHead], 1) == field(line, 1)) popCommand();
+    return;
+  }
   if (type == 'S' || type == 'E') {
     uint32_t epoch = strtoul(field(line, 1).c_str(), nullptr, 10);
-    if (epoch > 1700000000UL) {
-      // RTC has 1 s resolution: timestamps are accurate to about ±1 s.
-      epochOffsetMs = (int64_t)epoch * 1000 - (int64_t)millis();
-      clockOk = true;
+    if (epoch > 1700000000UL) updateClock(epoch);
+    if (bootEventPending && clockOk && capturing) {
+      char row[64];
+      snprintf(row, sizeof(row), "%llu,,CAM_BOOT,resumed", (unsigned long long)(nowEpochMs() / 1000));
+      appendLine(sessionDir + "/events.csv", row);
+      bootEventPending = false;
     }
   }
   if (type == 'S') {
     lastSensorLine = line;
-    lastBattMv = field(line, 8).toInt();
+    String batt = field(line, 8);
+    lastBattMv = batt.length() ? batt.toInt() : -1;  // -1 = external power
     if (capturing) appendLine(sessionDir + "/sensors.csv", line.substring(2));
   } else if (type == 'E') {
     String evType = field(line, 3);
@@ -149,8 +227,7 @@ void handleHubLine(char *raw) {
     else appendLine("/events-idle.csv", line.substring(2));
     if (evType == "CRIT_BATT" && capturing) {
       Serial.println("critical battery: stopping capture");
-      capturing = false;
-      writeSessionJson(true);
+      stopSession();
     }
   }
 }
@@ -173,12 +250,15 @@ void pollLink() {
 }
 
 // ---------- Capture ----------
+
 bool startSession(const String &protocol) {
   if (!sdOk || !camOk) return false;
   if (capturing) return true;
   sessionStartEpochMs = nowEpochMs();
-  sessionId = deviceId + "-" + String((unsigned long)(sessionStartEpochMs / 1000));
-  if (!clockOk) sessionId += "-noclock-" + String(millis());
+  String baseId = deviceId + "-" + String((unsigned long)(sessionStartEpochMs / 1000));
+  if (!clockOk) baseId += "-noclock-" + String(millis());
+  sessionId = baseId;
+  for (int n = 2; SD_MMC.exists("/sessions/" + sessionId); n++) sessionId = baseId + "-" + String(n);
   sessionDir = "/sessions/" + sessionId;
   SD_MMC.mkdir("/sessions");
   SD_MMC.mkdir(sessionDir);
@@ -189,6 +269,12 @@ bool startSession(const String &protocol) {
   appendLine(sessionDir + "/sensors.csv", "rtc_epoch,uptime_ms,temp_c,rh_pct,mq7,mq2,sound_p2p,batt_mv");
   appendLine(sessionDir + "/events.csv", "rtc_epoch,uptime_ms,type,value");
   writeSessionJson(false);
+  // Survives resets and the privacy switch: on boot the session is resumed (see resumeSession).
+  File cur = SD_MMC.open(CURRENT_SESSION_PATH, FILE_WRITE);
+  if (cur) {
+    cur.printf("%s\n%s\n%llu\n", sessionId.c_str(), protocolVersion.c_str(), sessionStartEpochMs);
+    cur.close();
+  }
   capturing = true;
   return true;
 }
@@ -197,7 +283,40 @@ void stopSession() {
   if (!capturing) return;
   capturing = false;
   writeSessionJson(true);
+  SD_MMC.remove(CURRENT_SESSION_PATH);
   digitalWrite(PIN_RED_LED, HIGH);
+}
+
+// After a reset or the privacy switch, continue the interrupted session: frames keep numbering,
+// and the hub's privacy replay (C,HELLO) lands in this session's events.csv.
+void resumeSession() {
+  File cur = SD_MMC.open(CURRENT_SESSION_PATH);
+  if (!cur) return;
+  String id = cur.readStringUntil('\n');
+  String protocol = cur.readStringUntil('\n');
+  String start = cur.readStringUntil('\n');
+  cur.close();
+  id.trim();
+  protocol.trim();
+  start.trim();
+  if (id.length() == 0 || !SD_MMC.exists("/sessions/" + id + "/frames.csv")) {
+    SD_MMC.remove(CURRENT_SESSION_PATH);
+    return;
+  }
+  sessionId = id;
+  sessionDir = "/sessions/" + id;
+  protocolVersion = protocol.length() ? protocol : "unknown";
+  sessionStartEpochMs = strtoull(start.c_str(), nullptr, 10);
+  frameSeq = 0;
+  File frames = SD_MMC.open(sessionDir + "/frames.csv");
+  if (frames) {
+    while (frames.available()) if (frames.read() == '\n') frameSeq++;
+    frames.close();
+    if (frameSeq > 0) frameSeq--;  // header line
+  }
+  capturing = true;
+  bootEventPending = true;
+  Serial.printf("resumed session %s at frame %u\n", sessionId.c_str(), frameSeq);
 }
 
 void captureFrame() {
@@ -239,6 +358,10 @@ void handleStatus() {
   body += "\"clock_ok\":" + String(clockOk ? "true" : "false") + ",";
   body += "\"epoch_ms\":" + String((unsigned long long)nowEpochMs()) + ",";
   body += "\"battery_mv\":" + String(lastBattMv) + ",";
+  body += "\"ip\":\"" + (WiFi.getMode() == WIFI_AP ? WiFi.softAPIP() : WiFi.localIP()).toString() + "\",";
+  body += "\"pending_commands\":" + String(cmdCount) + ",";
+  body += "\"dropped_commands\":" + String(droppedCommands) + ",";
+  body += "\"last_ack\":\"" + jsonEscape(lastAck) + "\",";
   body += "\"last_sensor_line\":\"" + jsonEscape(lastSensorLine) + "\",";
   body += "\"link_bad_checksums\":" + String(badChecksums);
   body += "}";
@@ -247,9 +370,12 @@ void handleStatus() {
 
 void handleTime() {
   if (!authorized()) return;
-  if (!server.hasArg("epoch")) return sendJson(400, "{\"error\":\"missing epoch\"}");
-  sendCommand("C,TIME," + server.arg("epoch"));
-  sendJson(202, "{\"status\":\"forwarded\"}");
+  String epoch = server.arg("epoch");
+  bool digits = epoch.length() == 10;
+  for (char c : epoch) digits = digits && isDigit(c);
+  if (!digits) return sendJson(400, "{\"error\":\"epoch must be 10 digits (unix seconds)\"}");
+  if (!enqueueCommand("C,TIME," + epoch)) return sendJson(503, "{\"error\":\"command queue full\"}");
+  sendJson(202, "{\"status\":\"queued\"}");  // confirmed by last_ack / RTC_SET event
 }
 
 void handleCaptureStart() {
@@ -267,8 +393,9 @@ void handleCaptureStop() {
 void handleBuzz() {
   if (!authorized()) return;
   String p = server.hasArg("pattern") ? server.arg("pattern") : "SHORT";
-  sendCommand("C,BUZZ," + p);
-  sendJson(202, "{\"status\":\"forwarded\"}");
+  if (p != "SHORT" && p != "DOUBLE" && p != "LONG") return sendJson(400, "{\"error\":\"pattern must be SHORT, DOUBLE or LONG\"}");
+  if (!enqueueCommand("C,BUZZ," + p)) return sendJson(503, "{\"error\":\"command queue full\"}");
+  sendJson(202, "{\"status\":\"queued\"}");
 }
 
 void handleSessions() {
@@ -304,6 +431,16 @@ bool removeRecursive(const String &path) {
   return SD_MMC.rmdir(path);
 }
 
+// Session ids are generated by this firmware: lowercase hex, digits and dashes only.
+// Rejecting anything else blocks empty ids, other directories and case tricks (FAT is case-insensitive).
+bool validSessionId(const String &id) {
+  if (id.length() == 0 || id.length() > 48) return false;
+  for (char c : id) {
+    if (!(isDigit(c) || (c >= 'a' && c <= 'z') || c == '-')) return false;
+  }
+  return true;
+}
+
 // /sessions/<id>/<file> and /sessions/<id>/frames/<n>.jpg, plus DELETE /sessions/<id>
 void handleNotFound() {
   if (!authorized()) return;
@@ -312,8 +449,13 @@ void handleNotFound() {
 
   if (server.method() == HTTP_DELETE) {
     String id = uri.substring(10);
-    if (id.indexOf('/') >= 0 || (capturing && id == sessionId)) return sendJson(409, "{\"error\":\"invalid or active session\"}");
-    return removeRecursive("/sessions/" + id) ? sendJson(200, "{\"status\":\"deleted\"}") : sendJson(404, "{\"error\":\"not found\"}");
+    if (!validSessionId(id)) return sendJson(400, "{\"error\":\"invalid session id\"}");
+    if (capturing && id == sessionId) return sendJson(409, "{\"error\":\"session is active\"}");
+    File d = SD_MMC.open("/sessions/" + id);
+    bool isDir = d && d.isDirectory();
+    if (d) d.close();
+    if (!isDir) return sendJson(404, "{\"error\":\"not found\"}");
+    return removeRecursive("/sessions/" + id) ? sendJson(200, "{\"status\":\"deleted\"}") : sendJson(500, "{\"error\":\"delete failed\"}");
   }
 
   File f = SD_MMC.open(uri);
@@ -352,7 +494,12 @@ void initWifi() {
     wifiMulti.addAP(WIFI_NETWORKS[i][0], WIFI_NETWORKS[i][1]);
   }
   unsigned long start = millis();
-  while (wifiMulti.run() != WL_CONNECTED && millis() - start < 20000) delay(500);
+  while (wifiMulti.run() != WL_CONNECTED && millis() - start < 20000) {
+    // Keep the hub link alive while connecting: acks, the privacy replay and sensor lines.
+    pollLink();
+    serviceCommands();
+    delay(100);
+  }
   if (WiFi.status() == WL_CONNECTED) {
     Serial.printf("Wi-Fi STA %s: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
   } else {
@@ -376,19 +523,24 @@ bool authorized() {
 
 void setup() {
   Serial.begin(115200);
+  hubLink.setRxBufferSize(4096);  // Wi-Fi scans block for seconds; don't lose hub lines meanwhile
   hubLink.begin(LINK_BAUD, SERIAL_8N1, PIN_LINK_RX, PIN_LINK_TX);
   pinMode(PIN_RED_LED, OUTPUT);
   digitalWrite(PIN_RED_LED, HIGH);
 
   char id[13];
   snprintf(id, sizeof(id), "%012llx", ESP.getEfuseMac());
-  deviceId = String(id).substring(6);
+  deviceId = String(id).substring(0, 6);  // NIC-specific MAC bytes (the last 6 hex digits are the vendor OUI)
 
   camOk = initCamera();
   sdOk = SD_MMC.begin("/sdcard", true);  // 1-bit mode frees GPIO 4, 12, 13
   pinMode(PIN_FLASH_LED, OUTPUT);
   digitalWrite(PIN_FLASH_LED, LOW);
   Serial.printf("%s device=%s camera=%d sd=%d psram=%d\n", FIRMWARE_VERSION, deviceId.c_str(), camOk, sdOk, psramFound());
+
+  if (sdOk && camOk) resumeSession();
+  enqueueCommand("C,HELLO");  // the hub replays any privacy interval (into the resumed session, if any)
+  serviceCommands();
 
   initWifi();
   server.on("/status", HTTP_GET, handleStatus);
@@ -401,12 +553,11 @@ void setup() {
   const char *headers[] = {"Authorization"};
   server.collectHeaders(headers, 1);
   server.begin();
-
-  sendCommand("C,HELLO");  // the hub replays any privacy interval
 }
 
 void loop() {
   pollLink();
+  serviceCommands();
   server.handleClient();
 
   if (capturing) {
