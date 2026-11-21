@@ -71,12 +71,13 @@ Local setup, commands and gotchas are in [`DEVELOPMENT.md`](./DEVELOPMENT.md).
 - **`db/`**: the shared Drizzle ORM schema (one module per area in `db/src/schema/`, re-exported by `db/src/schema.ts`), its migrations and the sensor-series helpers, imported by `web` and `worker` as `@observatorio/db`. Edit the schema, then run `npm run db:generate` and commit the migration. Rules Drizzle can't express (no-overlap constraints, immutability triggers, SQL functions, views) live in custom migrations and are covered by `npm run db:test`. See [`db/README.md`](./db/README.md). Only one person generates migrations at a time.
 - **`storage/`**: the object storage client (`@observatorio/storage`) shared by `web` and `worker`: presigned PUT/GET, HEAD, streamed GET, delete (every version) and the ADR 0002 key builders. Configured by the `S3_*` env vars.
 - **`web/`**: Next.js 16 (App Router, Cache Components) + Tailwind. It serves as the **API** (`/api/*`: ingestion from Android, protocol config, job enqueueing) and as the **researcher portal** (studies and protocols, timelines, evidence viewer, coverage, CSV/JSON export). Read `web/AGENTS.md` before touching Next.js code: the version has breaking changes. Any route that reads the DB must call `await connection()`.
-- **`worker/`**: a background worker that claims rows from the Postgres `jobs` table (`FOR UPDATE SKIP LOCKED`), dispatches on `job.type` and marks each job `done` or `failed`. This is where the video pipeline runs, because it is slow and needs `ffmpeg`:
-  1. **Segment selection:** a headless coding agent (OpenCode or similar), spawned as a subprocess, runs a video-editing skill backed by `ffmpeg`. Guided by the study protocol, it outputs an edit list (EDL) and cut clips of the relevant moments, with some context before and after. Skills live in `worker/skills/`.
-  2. **Extraction:** a multimodal LLM interprets the selected clips together with the aligned sensor data and returns JSON matching `data/schemas/observation`.
-  3. **Validation and storage:** the worker validates the schema, adds provenance fields and writes the results through `@observatorio/db`.
+- **`worker/`**: a background worker that claims rows from the Postgres `jobs` table (`FOR UPDATE SKIP LOCKED`), dispatches on `job.type` and marks each job `done` or `failed`. The `process_session` job (`worker/src/process-session/`, payload `{ upload_id }`) is the video pipeline; it uses `ffmpeg` from the `ffmpeg-static` package:
+  1. **Frames:** ffmpeg decodes still JPEG frames at a low rate, each mapped back to device time through `frames.csv`. Claude receives images, never video.
+  2. **Detection:** a cheap model labels batches of frames; candidate frames are merged into padded windows.
+  3. **Extraction:** a stronger model reads denser frames of each window and returns the protocol's attributes as structured JSON. Prompts and output schemas are built from the protocol version and its `event_types`.
+  4. **Validation and storage:** output is validated (frame ranges, confidence, `event_types.attributes_schema`), then a `pipeline_runs` row, observations and evidence (seconds of the original video) are written through `@observatorio/db`.
 - Media files go to S3-compatible object storage through presigned PUT URLs (Backblaze B2 bucket `olm-media-epoqpl` in production, MinIO from `docker-compose.yml` locally; see ADR 0002), through `@observatorio/storage`. Postgres only stores metadata and references.
-- Model and provider choices are TBD. Record them in `docs/decisions/` once they're picked.
+- Models: Claude Haiku 5.5 for detection and Claude Opus 5.5 for extraction.
 
 ### Deploy notes
 
@@ -87,7 +88,7 @@ git remote set-url --add --push origin https://github.com/platanus-hack/platanus
 git remote set-url --add --push origin https://github.com/<user>/<mirror-repo>.git
 ```
 
-Infrastructure is declared in the `render.yaml` Blueprint: `olm-web` (web, free plan), `olm-worker` (background worker, starter plan) and `olm-db` (Postgres, free plan, expires after ~30 days). Both services build from the repo root using npm workspaces, and migrations run when `olm-web` starts. If you add a service or env var, update `render.yaml` and `.env.example` (a single root `.env` is shared by all Node workspaces). The worker will need `ffmpeg` and the agent CLI available at runtime: check that the Render Node runtime provides them, or switch `olm-worker` to Docker.
+Infrastructure is declared in the `render.yaml` Blueprint: `olm-web` (web, free plan), `olm-worker` (background worker, starter plan) and `olm-db` (Postgres, free plan, expires after ~30 days). Both services build from the repo root using npm workspaces, and migrations run when `olm-web` starts. If you add a service or env var, update `render.yaml` and `.env.example` (a single root `.env` is shared by all Node workspaces). The worker gets `ffmpeg` from the `ffmpeg-static` npm package, so the Node runtime is enough.
 
 ## 5. Data contracts
 

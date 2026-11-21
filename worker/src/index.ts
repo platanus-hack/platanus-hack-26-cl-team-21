@@ -1,4 +1,5 @@
 import { claimJob, finishJob } from "./jobs";
+import { processSession } from "./process-session";
 
 const POLL_MS = 5_000;
 let stopping = false;
@@ -10,6 +11,12 @@ async function handle(job: { id: number; type: string; payload: unknown }) {
     case "hello":
       console.log(`hello from worker, job ${job.id}`);
       return;
+    case "process_session": {
+      const result = await processSession(job);
+      if (result) console.log(`job ${job.id}: pipeline run ${result.runId} wrote ${result.observations} observations`);
+      else console.log(`job ${job.id}: sensor-only upload processed`);
+      return;
+    }
     default:
       throw new Error(`unknown job type: ${job.type}`);
   }

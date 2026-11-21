@@ -19,6 +19,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       db: ${{ steps.filter.outputs.db }}
       storage: ${{ steps.filter.outputs.storage }}
+      worker: ${{ steps.filter.outputs.worker }}
       mock-api: ${{ steps.filter.outputs.mock-api }}
       android: ${{ steps.filter.outputs.android }}
     steps:
@@ -52,6 +53,13 @@ jobs:
               - *workflow
               - *npm
               - storage/**
+            worker:
+              - *workflow
+              - *npm
+              - worker/**
+              - db/src/**
+              - db/migrations/**
+              - db/package.json
             mock-api:
               - *workflow
               - tools/mock-api/**
@@ -137,6 +145,39 @@ jobs:
         run: npm run typecheck -w storage
       - name: Unit tests
         run: npm run storage:test
+
+  worker:
+    needs: changes
+    if: needs.changes.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: observatorio
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/observatorio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck -w worker
+      - name: Migrate and seed
+        run: npm run db:migrate && npm run db:seed
+      - name: Tests (Claude mocked)
+        run: npm test -w worker
 
   mock-api:
     needs: changes
