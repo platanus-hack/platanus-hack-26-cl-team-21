@@ -13,6 +13,7 @@
     "dev:web": "npm run dev -w web",
     "dev:worker": "npm run dev -w worker",
     "db:generate": "npm run generate -w db",
-    "db:migrate": "npm run migrate -w db"
+    "db:migrate": "npm run migrate -w db",
+    "db:test": "npm run test -w db"
   }
 }

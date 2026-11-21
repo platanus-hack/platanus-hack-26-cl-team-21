@@ -28,7 +28,7 @@ npm run dev:worker
 curl -X POST localhost:3000/api/jobs   # the worker prints "hello from worker"
 ```
 
-Changing the schema: edit `db/src/schema.ts`, then `npm run db:generate` and commit the migration in `db/migrations/`.
+Changing the schema: edit the module for that area in `db/src/schema/`, then `npm run db:generate` and commit the migration in `db/migrations/`. Rules Drizzle can't express (no-overlap constraints, triggers, SQL functions) go in a custom migration; see [`db/README.md`](db/README.md). `npm run db:test` checks those rules against your database (rolled back).
 
 ## Android
 
