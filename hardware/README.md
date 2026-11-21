@@ -46,7 +46,7 @@ Layout notes: the MQ sensors go at the bottom with vents, the DHT11 on a side wa
 
 - Each frame is complete on its own, so a power loss corrupts at most one frame.
 - Every frame carries an exact timestamp.
-- The worker turns the frames into an MP4 with `ffmpeg` (variable frame rate, using the real timestamps) before the agent runs.
+- The Android app turns the approved frames into an H.264 MP4 (variable frame rate, using the real timestamps) before uploading it ([ADR 0002](../docs/decisions/0002-contracts-v0.md)).
 - Bandwidth and SD wear stay low.
 
 **Audio.** We want audio for some studies (rating social interactions, the type of therapy received). We have a loose **electret capsule** (2 pins), the same kind of element the KY-037 carries. On its own it doesn't unlock recording, because a working microphone needs three things:
@@ -275,7 +275,7 @@ All endpoints require `Authorization: Bearer <API_TOKEN>`. Wi-Fi: the device joi
 | 7 | UART link | `sensors.csv` filling inside the session, `C,REC` heartbeats lighting the LED |
 | 8 | Full system on battery | runs 30 min unattended; measure current and battery drop |
 | 9 | Enclosure | camera orientation reproducible, strap stable, MQ section ventilated, switch reachable |
-| 10 | End-to-end | Android downloads a session; worker builds MP4 from `frames.csv` |
+| 10 | End-to-end | Android downloads a session and builds the MP4 from `frames.csv` |
 
 ## 10. Open questions
 

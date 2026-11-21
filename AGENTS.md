@@ -58,7 +58,7 @@ Full proposal in [`hardware/README.md`](./hardware/README.md); decision record i
 
 ### Android (`android/`)
 
-Kotlin. Talks to the device over its HTTP API on the local network, with a bearer token shared at pairing time (BLE is a stretch goal). It shows device status (battery, storage, recording, sensors), syncs the clock, starts and stops sessions, downloads them, lets the participant review, trim or exclude, then uploads only approved material plus the excluded intervals.
+Kotlin. Talks to the device over its HTTP API on the local network, with a bearer token shared at pairing time (BLE is a stretch goal). It shows device status (battery, storage, recording, sensors), syncs the clock, starts and stops sessions, downloads them, lets the participant review, trim or exclude, encodes the approved frames to H.264 and uploads that session bundle plus the excluded intervals (contract: [ADR 0002](./docs/decisions/0002-contracts-v0.md)).
 
 **Top priorities: it must look native and be fast.** Use Jetpack Compose with stock Material 3 components, edge-to-edge and predictive back. The brand is applied only through the theme (see [`android/design/GUIDELINES.md`](./android/design/GUIDELINES.md)). No custom-drawn widgets and no heavy UI or animation libraries. UI text is Spanish only. Keep BLE, network and file I/O off the main thread. Add dependencies only when the platform can't do the job.
 
@@ -72,7 +72,7 @@ Local setup, commands and gotchas are in [`DEVELOPMENT.md`](./DEVELOPMENT.md).
   1. **Segment selection:** a headless coding agent (OpenCode or similar), spawned as a subprocess, runs a video-editing skill backed by `ffmpeg`. Guided by the study protocol, it outputs an edit list (EDL) and cut clips of the relevant moments, with some context before and after. Skills live in `worker/skills/`.
   2. **Extraction:** a multimodal LLM interprets the selected clips together with the aligned sensor data and returns JSON matching `data/schemas/observation`.
   3. **Validation and storage:** the worker validates the schema, adds provenance fields and writes the results through `@observatorio/db`.
-- Media files go to object storage (provider TBD). Postgres only stores metadata and references.
+- Media files go to S3-compatible object storage through presigned PUT URLs (Backblaze B2 in production, MinIO locally; see ADR 0002). Postgres only stores metadata and references.
 - Model and provider choices are TBD. Record them in `docs/decisions/` once they're picked.
 
 ### Deploy notes
@@ -95,9 +95,11 @@ There are two sources of truth:
 
 Change either one deliberately and update every consumer in the same PR.
 
+The phone → backend contracts (enrollment, upload API v0, session bundle, storage keys, coverage derivation and how they map to tables) are fixed in [`docs/decisions/0002-contracts-v0.md`](./docs/decisions/0002-contracts-v0.md).
+
 - **`sensor_sample`**: `device_id`, `timestamp`, `sensor`, `value`, `unit`, `firmware_version`.
 - **`device_event`**: battery level, charging, privacy switch on/off, button press, storage full, sensor fault.
-- **`clip_manifest`**: `clip_id`, `device_id`, `started_at`, `ended_at`, `sha256`, `storage_uri`, `approved_by_participant`.
+- **`clip_manifest`**: `clip_id`, `device_id`, `started_at`, `ended_at`, `sha256`, `storage_uri`, `approved_by_participant`. Superseded by the session bundle in ADR 0002.
 - **`coverage_interval`**: `participant_id`, `start`, `end`, `status` ∈ `observed | excluded_by_participant | privacy_switch | device_off | low_battery | no_upload | low_quality`.
 - **`observation`** (one detected event):
 
