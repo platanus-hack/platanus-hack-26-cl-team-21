@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      db: ${{ steps.filter.outputs.db }}
+      mock-api: ${{ steps.filter.outputs.mock-api }}
+      android: ${{ steps.filter.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            workflow: &workflow
+              - .github/workflows/ci.yml
+            npm: &npm
+              - package.json
+              - package-lock.json
+            web:
+              - *workflow
+              - *npm
+              - web/**
+              - db/src/**
+              - db/package.json
+            db:
+              - *workflow
+              - *npm
+              - db/src/**
+              - db/migrations/**
+              - db/tests/**
+              - db/drizzle.config.ts
+              - db/package.json
+            mock-api:
+              - *workflow
+              - tools/mock-api/**
+            android:
+              - *workflow
+              - android/app/**
+              - android/gradle/**
+              - android/*.kts
+              - android/gradle.properties
+              - android/gradlew
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint -w web
+      - name: Build
+        run: npm run build -w web
+
+  db:
+    needs: changes
+    if: needs.changes.outputs.db == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: observatorio
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/observatorio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Check migrations are consistent
+        working-directory: db
+        run: npx drizzle-kit check
+      - name: Check schema has no ungenerated migrations
+        run: |
+          npm run db:generate
+          git diff --exit-code -- db/migrations
+          test -z "$(git status --porcelain -- db/migrations)"
+      - name: Migrate
+        run: npm run db:migrate
+      - name: Rule tests
+        run: npm run db:test
+      - name: Seed
+        run: npm run db:seed
+
+  mock-api:
+    needs: changes
+    if: needs.changes.outputs.mock-api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Tests
+        run: node --test tools/mock-api/server.test.mjs
+
+  android:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build and lint
+        run: ./gradlew assembleDebug lintDebug
