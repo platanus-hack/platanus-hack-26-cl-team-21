@@ -34,9 +34,9 @@ Work is tracked in **Linear**. Personal research and decision notes live in each
 ```text
 [Pendant]                         [Android app]                   [Backend on Render]
 Arduino Uno (sensor hub) --UART--> ESP32-CAM                      web/ (Next.js)
-  DHT11, MQ-7 (CO), MQ-2,           camera, SD card, RTC time       - ingestion API
-  KY-037, RTC, buzzer, buttons      BLE: status/control  ------->   - researcher portal
-                                    Wi-Fi: media + sensor batches   - Postgres
+  DHT11, MQ-7 (CO), MQ-2,           camera (JPEG frames), SD card   - ingestion API
+  KY-037, RTC, buzzer, buttons      Wi-Fi HTTP API  ------------>   - researcher portal
+                                    (status, time, sessions)        - Postgres
                                          |                              |
                                          v                              v  jobs table
                                     review -> exclude -> approve   worker/ (Node)
@@ -47,17 +47,18 @@ Arduino Uno (sensor hub) --UART--> ESP32-CAM                      web/ (Next.js)
 
 ### Hardware (`hardware/`, `firmware/`)
 
-- **ESP32-CAM** owns camera, SD card, Wi-Fi and BLE. It has very few free GPIOs, so it does not read sensors directly.
-- **Arduino Uno** is the sensor hub: DHT11, MQ-7 (CO), MQ-2 (flammable gases), KY-037 (sound), RTC module, buzzer, event button. It sends timestamped readings to the ESP32-CAM over UART.
-- **Power**: 7.4 V Li-ion → LM2596 buck → 5 V. MQ heaters draw ~150 mA each, so budget for them and log battery state.
-- **Privacy**: physical switch that cuts the camera, a recording LED tied to the real capture state, and an event button.
-- **Time**: the RTC is the device clock; the phone syncs it over BLE and we log the drift.
-- Raspberry Pi is a fallback only if the ESP32-CAM can't meet the requirements.
-- Open risks: BLE + camera memory pressure on the ESP32-CAM, no IMU in the current BOM (no wear detection), and the sensor heating up next to the body.
+Full proposal in [`hardware/README.md`](./hardware/README.md); decision record in `docs/decisions/0001-pendant-hardware-architecture.md`.
+
+- **Split device:** a camera pendant (ESP32-CAM) and a body-worn hub (Arduino Uno + sensors + 2S battery + LM2596 → 5 V), joined by a 5-wire cable.
+- **The Uno is the sensor hub and master clock:** DHT11, MQ-7, MQ-2, KY-037, RTC, buzzer, event button, privacy switch, battery voltage. It sends checksummed ASCII lines to the ESP32-CAM over UART.
+- **The ESP32-CAM** saves JPEG frames (2 fps, VGA) plus `frames.csv`, `sensors.csv`, `events.csv` and `session.json` per session on the microSD, and exposes an **HTTP API over Wi-Fi** (phone hotspot).
+- **No audio recording**, only relative sound level. **No BLE in v0.**
+- **The privacy switch physically cuts the pendant's power**, and the hub logs the interval.
+- Open risks: GPIO12 strapping on the ESP32-CAM, brownouts when Wi-Fi starts, no IMU (no wear detection), MQ heaters dominating the power budget.
 
 ### Android (`android/`)
 
-Kotlin. Pairs over BLE, shows device status (battery, storage, recording, sensors), receives the protocol schedule, pulls media over Wi-Fi, lets the participant review, trim or exclude, then uploads only approved material plus the excluded intervals.
+Kotlin. Talks to the pendant over its HTTP API on the phone hotspot (BLE is a stretch goal). It shows device status (battery, storage, recording, sensors), syncs the clock, starts and stops sessions, downloads them, lets the participant review, trim or exclude, then uploads only approved material plus the excluded intervals.
 
 ### Backend stack (npm workspaces, Node 24, TypeScript)
 
