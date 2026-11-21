@@ -15,6 +15,17 @@ services:
     envVars:
       - key: DATABASE_URL
         fromDatabase: { name: olm-db, property: connectionString }
+      # Object storage (Backblaze B2). The key is limited to this bucket; set it in the dashboard.
+      - key: S3_ENDPOINT
+        value: https://s3.us-east-005.backblazeb2.com
+      - key: S3_REGION
+        value: us-east-005
+      - key: S3_BUCKET
+        value: olm-media-epoqpl
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
 
   - type: worker
     name: olm-worker
@@ -25,3 +36,14 @@ services:
     envVars:
       - key: DATABASE_URL
         fromDatabase: { name: olm-db, property: connectionString }
+      # Object storage (Backblaze B2). The key is limited to this bucket; set it in the dashboard.
+      - key: S3_ENDPOINT
+        value: https://s3.us-east-005.backblazeb2.com
+      - key: S3_REGION
+        value: us-east-005
+      - key: S3_BUCKET
+        value: olm-media-epoqpl
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false

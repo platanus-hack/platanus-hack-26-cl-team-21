@@ -18,6 +18,7 @@ jobs:
     outputs:
       web: ${{ steps.filter.outputs.web }}
       db: ${{ steps.filter.outputs.db }}
+      storage: ${{ steps.filter.outputs.storage }}
       mock-api: ${{ steps.filter.outputs.mock-api }}
       android: ${{ steps.filter.outputs.android }}
     steps:
@@ -37,6 +38,8 @@ jobs:
               - web/**
               - db/src/**
               - db/package.json
+              - storage/src/**
+              - storage/package.json
             db:
               - *workflow
               - *npm
@@ -45,6 +48,10 @@ jobs:
               - db/tests/**
               - db/drizzle.config.ts
               - db/package.json
+            storage:
+              - *workflow
+              - *npm
+              - storage/**
             mock-api:
               - *workflow
               - tools/mock-api/**
@@ -113,6 +120,23 @@ jobs:
         run: npm run db:test
       - name: Seed
         run: npm run db:seed
+
+  storage:
+    needs: changes
+    if: needs.changes.outputs.storage == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck -w storage
+      - name: Unit tests
+        run: npm run storage:test
 
   mock-api:
     needs: changes

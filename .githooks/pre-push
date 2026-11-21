@@ -29,6 +29,11 @@ if touches '^web/.*\.(ts|tsx|js|mjs)$'; then
     (cd web && xargs -0 ../node_modules/.bin/eslint)
 fi
 
+if touches '^storage/'; then
+  echo "pre-push: storage unit tests"
+  npm run --silent test -w storage > /dev/null
+fi
+
 if touches '^(db/(src/|migrations/|drizzle\.config\.ts|package\.json)|package(-lock)?\.json)'; then
   echo "pre-push: drizzle migrations"
   if [ -n "$(git status --porcelain -- db/src db/migrations db/drizzle.config.ts)" ]; then
