@@ -10,7 +10,7 @@ Available parts: ESP32-CAM, Arduino Uno, DHT11, MQ-7, MQ-2, KY-037, RTC, buzzer,
 
 1. **Single chest-worn box** containing the ESP32-CAM (camera module) and the Uno (sensor hub).
 2. **The Uno is the sensor hub and owns the master clock (RTC).** It streams checksummed ASCII lines to the ESP32-CAM over UART.
-3. **JPEG frames at 2 fps plus a timestamp index** on the microSD, instead of video. The worker builds the MP4 with ffmpeg.
+3. **JPEG frames at 2 fps plus a timestamp index** on the microSD, instead of video. The worker builds the MP4 with ffmpeg. *(Superseded by [0002](./0002-contracts-v0.md): the phone encodes the MP4.)*
 4. **No audio recording on the device yet.** The KY-037 and the loose electret capsule need a preamp, a continuously sampling ADC and storage, which the current boards can't provide together. The device records relative sound level; the audio proof of concept is still open (`hardware/README.md` §2). The phone microphone is ruled out because it breaks standardization.
 5. **HTTP API on the local network for v0** (status, time sync, capture control, file download). The device joins known networks or opens its own AP, requires a bearer token and never talks to the internet. BLE is a stretch goal.
 6. **The privacy switch physically cuts the camera's power.** The hub logs the interval, which becomes a `privacy_switch` coverage gap.
