@@ -60,6 +60,8 @@ Full proposal in [`hardware/README.md`](./hardware/README.md); decision record i
 
 Kotlin. Talks to the device over its HTTP API on the local network, with a bearer token shared at pairing time (BLE is a stretch goal). It shows device status (battery, storage, recording, sensors), syncs the clock, starts and stops sessions, downloads them, lets the participant review, trim or exclude, then uploads only approved material plus the excluded intervals.
 
+**Top priorities: it must look native and be fast.** Use Jetpack Compose with stock Material 3 components, edge-to-edge and predictive back. The brand is applied only through the theme (see [`android/design/GUIDELINES.md`](./android/design/GUIDELINES.md)). No custom-drawn widgets and no heavy UI or animation libraries. UI text is Spanish only. Keep BLE, network and file I/O off the main thread. Add dependencies only when the platform can't do the job.
+
 ### Backend stack (npm workspaces, Node 24, TypeScript)
 
 Local setup, commands and gotchas are in [`DEVELOPMENT.md`](./DEVELOPMENT.md).
