@@ -52,3 +52,18 @@ Render only deploys from repos you own: set up the personal mirror described in 
 - Production storage is the private B2 bucket `olm-media-epoqpl` (CORS allows presigned PUT/GET/HEAD from any origin; hidden file versions are purged after a day). Its bucket-scoped key is set in the Render dashboard; ask the backend owner for a local copy. B2 keeps old versions on a plain S3 delete, so always delete through `storage.delete()`, which removes every version.
 - CI (`.github/workflows/ci.yml`) runs each job only when the PR touches its files: `web` (lint, build), `db` (migration checks, rule tests, seed), `storage` (typecheck, key and delete tests; the MinIO round trip is local only), `mock-api` (tests) and `android` (build, lint). Editing the workflow runs them all.
 - `npm install` turns on a pre-push hook (`.githooks/pre-push`) with light versions of the CI checks for the areas the push changes: eslint on changed `web` files, migration checks for `db`, the `storage` unit tests and the mock API tests. Android and the web build are left to CI. Skip it with `git push --no-verify`.
+
+## Session pipeline (`process_session`)
+
+The worker turns an uploaded session video into observations (`worker/src/process-session/`). Until object storage is wired, it reads `<LOCAL_MEDIA_DIR>/<upload_id>/video.mp4` and `frames.csv`; the declared video and frame timeline hashes must match the bundle.
+
+```bash
+npm test -w worker            # unit + DB tests, Claude mocked (DB tests need a migrated, seeded DATABASE_URL)
+npm run typecheck -w worker
+npm run smoke -w worker       # ONE real run: synthetic 25 s video, seeded participant P-001, needs ANTHROPIC_API_KEY
+npm run smoke -w worker -- path/to/video.mp4 path/to/frames.csv   # same, with a real session
+```
+
+The smoke run prints the observations, the number of calls and the tokens per pass.
+
+CI typechecks the worker and runs those tests with seeded Postgres. The pre-push hook typechecks the worker when it changes.

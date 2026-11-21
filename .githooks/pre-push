@@ -46,3 +46,8 @@ if touches '^(db/(src/|migrations/|drizzle\.config\.ts|package\.json)|package(-l
     exit 1
   fi
 fi
+
+if touches '^(worker/|db/src/)'; then
+  echo "pre-push: worker typecheck"
+  npm run --silent typecheck -w worker
+fi

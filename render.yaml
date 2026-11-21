@@ -47,3 +47,5 @@ services:
         sync: false
       - key: S3_SECRET_ACCESS_KEY
         sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
