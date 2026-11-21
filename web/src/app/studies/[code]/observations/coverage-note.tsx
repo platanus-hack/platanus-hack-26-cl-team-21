@@ -1,21 +1,13 @@
-import { COVERAGE_STATUS } from "@observatorio/db";
+import { formatDuration, formatShare } from "@/lib/format";
+import { COVERAGE_STATUS_LABELS } from "@/lib/labels";
 import type { CoverageSummary } from "@/lib/queries/observations";
-import { COVERAGE_STATUS_LABEL, formatHours, formatShare } from "./format";
 
 // Shown above the list so it is never read as complete: episodes can only be detected in observed
-// time, and every non-observed hour is listed with its reason.
+// time, and every non-observed hour of the study period is listed with its reason.
 export function CoverageNote({ coverage, scope }: { coverage: CoverageSummary; scope: string }) {
-  const { byStatus, unrecordedSeconds, totalSeconds, participantsWithoutCoverage } = coverage;
-  const observed = byStatus.observed;
+  const { observedSeconds: observed, totalSeconds, notObserved: reasons, participantsWithoutPeriod } = coverage;
   const notObserved = totalSeconds - observed;
-  const reasons = [
-    ...COVERAGE_STATUS.filter((status) => status !== "observed" && byStatus[status] > 0).map((status) => ({
-      label: COVERAGE_STATUS_LABEL[status],
-      seconds: byStatus[status],
-    })),
-    ...(unrecordedSeconds > 0 ? [{ label: "Sin registro de cobertura", seconds: unrecordedSeconds }] : []),
-  ];
-  const partial = totalSeconds === 0 || notObserved > 0 || participantsWithoutCoverage > 0;
+  const partial = totalSeconds === 0 || reasons.length > 0 || participantsWithoutPeriod > 0;
 
   return (
     <section
@@ -27,47 +19,57 @@ export function CoverageNote({ coverage, scope }: { coverage: CoverageSummary; s
       </h2>
       {totalSeconds === 0 ? (
         <p className="mt-1">
-          No hay registros de cobertura para este alcance. No se sabe qué parte del tiempo fue observada, así que esta lista no puede
-          leerse como completa.
+          Este alcance no tiene tiempo dentro del periodo de estudio de ningún participante. No se sabe qué parte del tiempo fue
+          observada, así que esta lista no puede leerse como completa.
         </p>
       ) : (
         <>
           <p className="mt-1">
-            <strong>Observado: {formatHours(observed)}</strong> de {formatHours(totalSeconds)} ({formatShare(observed, totalSeconds)}).{" "}
-            {notObserved > 0 ? (
+            {observed > 0 ? (
               <>
-                <strong>No observado: {formatHours(notObserved)}</strong>. En ese tiempo no se detectan episodios, lo que no significa que
-                no hayan ocurrido: la lista solo cubre el tiempo observado.
+                <strong>Observado: {formatDuration(observed)}</strong> de {formatDuration(totalSeconds)} ({formatShare(observed, totalSeconds)}).
               </>
-            ) : participantsWithoutCoverage === 0 ? (
-              "Todo el tiempo registrado del alcance fue observado."
+            ) : (
+              <>
+                <strong>Sin tiempo observado</strong> en {formatDuration(totalSeconds)} de periodo de estudio.
+              </>
+            )}{" "}
+            {reasons.length > 0 ? (
+              <>
+                <strong>No observado: {formatDuration(notObserved)}</strong>. En ese tiempo no se detectan episodios, lo que no significa
+                que no hayan ocurrido: la lista solo cubre el tiempo observado.
+              </>
+            ) : participantsWithoutPeriod === 0 ? (
+              "Todo el periodo de estudio del alcance fue observado."
             ) : null}
           </p>
           {reasons.length > 0 && (
             <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
               {reasons.map((reason) => (
-                <li key={reason.label}>
-                  {reason.label}: <span className="tabular-nums">{formatHours(reason.seconds)}</span>
+                <li key={reason.status}>
+                  {COVERAGE_STATUS_LABELS[reason.status]}: <span className="tabular-nums">{formatDuration(reason.seconds)}</span>
                 </li>
               ))}
             </ul>
           )}
         </>
       )}
-      {totalSeconds > 0 && participantsWithoutCoverage > 0 && (
+      {participantsWithoutPeriod > 0 && (
         <p className="mt-2">
           <strong>
-            {participantsWithoutCoverage === 1
+            {participantsWithoutPeriod === 1
               ? "1 participante no tiene"
-              : `${participantsWithoutCoverage} participantes no tienen`}{" "}
-            ningún registro de cobertura
-          </strong>
-          : su tiempo no observado no se puede cuantificar y no está incluido en las horas anteriores.
+              : `${participantsWithoutPeriod} participantes no tienen`}{" "}
+            periodo de estudio
+          </strong>{" "}
+          (sin protocolo asignado o aún no comienza): su tiempo no observado no se puede cuantificar y no está incluido en el total anterior.
         </p>
       )}
       <p className="mt-2 text-xs opacity-80">
-        La cobertura depende del participante y la fecha, no del tipo de evento ni del estado de revisión. Las observaciones rechazadas en
-        revisión humana no se muestran.
+        El periodo de estudio de cada participante va desde su primera asignación a un protocolo hasta el fin de la última, su retiro
+        u hoy, lo que ocurra primero; “Sin registro” es tiempo de ese periodo sin datos subidos. La cobertura depende del
+        participante y la fecha, no del tipo de evento ni del estado de revisión. Las observaciones rechazadas en revisión humana no
+        se muestran.
       </p>
     </section>
   );

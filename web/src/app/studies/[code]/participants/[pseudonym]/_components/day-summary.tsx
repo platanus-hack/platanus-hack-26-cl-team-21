@@ -1,18 +1,34 @@
 import type { TimelineDay } from "@/lib/queries/timeline";
-import { formatDuration, formatPercent, formatRange } from "./format";
-import { STATUS, eventCountLabel } from "./labels";
+import { formatDuration, formatRange, formatShare } from "@/lib/format";
+import { COVERAGE_STATUS_LABELS, COVERAGE_STATUS_STYLES, eventCountLabel } from "@/lib/labels";
 
 /**
- * Per-day summary. Episodes are counted over observed time only; when nothing was observed no
- * count is shown at all (never a zero for a window that was not observed).
+ * Per-day summary over the part of the day inside the study period. Episodes are counted over
+ * observed time only; when nothing was observed no count is shown at all (never a zero for a
+ * window that was not observed).
  */
 export function DaySummary({ day, timeZone }: { day: TimelineDay; timeZone: string }) {
-  const { summary } = day;
-  const notObservedMs = summary.dayMs - summary.observedMs;
+  const { summary, period } = day;
+  if (!period) {
+    return (
+      <p className="rounded-lg bg-zinc-50 p-4 text-sm text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
+        Este día está fuera del periodo de estudio del participante: no se reporta cobertura ni conteos. Se muestra solo por sus
+        observaciones.
+      </p>
+    );
+  }
+  const notObservedMs = summary.periodMs - summary.observedMs;
   const notObservedBands = day.bands.filter((b) => b.status !== "observed");
+  const wholeDay = period.startMs === day.startMs && period.endMs === day.endMs;
+  const ofDay = wholeDay ? "del día" : "del periodo de estudio de este día";
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
+      {!wholeDay && (
+        <p className="text-sm text-zinc-600 md:col-span-2 dark:text-zinc-400">
+          Periodo de estudio este día: {formatRange(period.startMs, period.endMs, timeZone, day.endMs)}.
+        </p>
+      )}
       <div className="rounded-lg bg-zinc-50 p-4 text-sm dark:bg-zinc-900">
         <h4 className="mb-2 font-medium">Episodios en tiempo observado</h4>
         {summary.observedMs === 0 ? (
@@ -23,8 +39,8 @@ export function DaySummary({ day, timeZone }: { day: TimelineDay; timeZone: stri
         ) : (
           <>
             <p className="mb-2 text-zinc-600 dark:text-zinc-400">
-              Tiempo observado: <strong className="text-foreground">{formatDuration(summary.observedMs)}</strong> (
-              {formatPercent(summary.observedMs, summary.dayMs)} del día).
+              Tiempo observado: <strong className="text-foreground">{formatDuration(summary.observedMs / 1000)}</strong> (
+              {formatShare(summary.observedMs, summary.periodMs)} {ofDay}).
             </p>
             {summary.counts.length === 0 ? (
               <p>Sin episodios detectados durante el tiempo observado.</p>
@@ -34,7 +50,7 @@ export function DaySummary({ day, timeZone }: { day: TimelineDay; timeZone: stri
                   <li key={c.eventKey} className="flex flex-wrap items-baseline gap-x-2">
                     <span className="text-lg font-semibold tabular-nums">{c.count}</span>
                     <span>{eventCountLabel(c.eventKey, c.eventLabel, c.count)}</span>
-                    <span className="text-zinc-500">· duración observada {formatDuration(c.observedMs)}</span>
+                    <span className="text-zinc-500">· duración observada {formatDuration(c.observedMs / 1000)}</span>
                   </li>
                 ))}
               </ul>
@@ -53,12 +69,12 @@ export function DaySummary({ day, timeZone }: { day: TimelineDay; timeZone: stri
       <div className="rounded-lg bg-zinc-50 p-4 text-sm dark:bg-zinc-900">
         <h4 className="mb-2 font-medium">Tiempo no observado</h4>
         {notObservedMs === 0 ? (
-          <p>Todo el día fue observado.</p>
+          <p>{wholeDay ? "Todo el día fue observado." : "Todo el periodo de estudio de este día fue observado."}</p>
         ) : (
           <>
             <p className="mb-2 text-zinc-600 dark:text-zinc-400">
-              <strong className="text-foreground">{formatDuration(notObservedMs)}</strong> ({formatPercent(notObservedMs, summary.dayMs)}{" "}
-              del día) sin observación:
+              <strong className="text-foreground">{formatDuration(notObservedMs / 1000)}</strong> ({formatShare(notObservedMs, summary.periodMs)}{" "}
+              {ofDay}) sin observación:
             </p>
             <table className="w-full text-left">
               <thead className="sr-only">
@@ -73,11 +89,11 @@ export function DaySummary({ day, timeZone }: { day: TimelineDay; timeZone: stri
                   <tr key={status} className="align-top">
                     <td className="py-0.5 pr-3">
                       <span className="flex items-center gap-2">
-                        <span className="inline-block h-3 w-5 shrink-0 rounded-sm ring-1 ring-black/15" style={STATUS[status].style} aria-hidden />
-                        {STATUS[status].label}
+                        <span className="inline-block h-3 w-5 shrink-0 rounded-sm ring-1 ring-black/15" style={COVERAGE_STATUS_STYLES[status]} aria-hidden />
+                        {COVERAGE_STATUS_LABELS[status]}
                       </span>
                     </td>
-                    <td className="py-0.5 pr-3 tabular-nums whitespace-nowrap">{formatDuration(ms)}</td>
+                    <td className="py-0.5 pr-3 tabular-nums whitespace-nowrap">{formatDuration(ms / 1000)}</td>
                     <td className="py-0.5 tabular-nums text-zinc-500">
                       {notObservedBands
                         .filter((b) => b.status === status)

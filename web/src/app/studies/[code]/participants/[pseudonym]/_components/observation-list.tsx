@@ -1,6 +1,15 @@
 import type { PlacedObservation, SensorStat } from "@/lib/queries/timeline";
-import { formatDuration, formatNumber, formatRange } from "./format";
-import { REVIEW_STATUS, STATUS, attributeLabel, attributeValue, eventLabel, isHollowMarker, plural, sensorInfo, sortedAttributes } from "./labels";
+import { formatConfidence, formatDuration, formatNumber, formatRange, plural } from "@/lib/format";
+import {
+  COVERAGE_STATUS_LABELS,
+  eventTypeLabel,
+  formatAttributes,
+  label,
+  REVIEW_STATUS_BADGE_CLASS,
+  REVIEW_STATUS_LABELS,
+  sensorInfo,
+} from "@/lib/labels";
+import { isHollowMarker } from "./day-timeline";
 
 function SensorContext({ stats }: { stats: SensorStat[] }) {
   const withReadings = stats.filter((s) => s.n > 0 && s.mean !== null);
@@ -46,8 +55,7 @@ export function ObservationList({ observations, timeZone }: { observations: Plac
   return (
     <ol className="space-y-3">
       {observations.map((o) => {
-        const review = REVIEW_STATUS[o.reviewStatus] ?? { label: o.reviewStatus, className: "bg-zinc-100 text-zinc-700" };
-        const attributes = sortedAttributes(o.attributes);
+        const reviewClass = REVIEW_STATUS_BADGE_CLASS[o.reviewStatus] ?? REVIEW_STATUS_BADGE_CLASS.pending;
         return (
           <li
             key={o.id}
@@ -62,21 +70,23 @@ export function ObservationList({ observations, timeZone }: { observations: Plac
                 }`}
               />
               <span className="font-mono tabular-nums">{formatRange(o.startMs, o.endMs, timeZone)}</span>
-              <span className="text-zinc-500">({formatDuration(o.endMs - o.startMs)})</span>
-              <span className="font-medium">{eventLabel(o.eventKey, o.eventLabel)}</span>
-              <span className={`rounded-full px-2 py-0.5 text-xs ${review.className}`}>{review.label}</span>
+              <span className="text-zinc-500">({formatDuration((o.endMs - o.startMs) / 1000)})</span>
+              <span className="font-medium">{eventTypeLabel(o.eventKey, o.eventLabel)}</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs ${reviewClass}`}>
+                Revisión humana: {label(REVIEW_STATUS_LABELS, o.reviewStatus).toLowerCase()}
+              </span>
             </div>
 
             <dl className="mt-3 grid gap-x-6 gap-y-1 sm:grid-cols-[max-content_1fr]">
-              {attributes.map(([key, value]) => (
-                <div key={key} className="contents">
-                  <dt className="text-zinc-500">{attributeLabel(key)}</dt>
-                  <dd>{attributeValue(key, value)}</dd>
+              {formatAttributes(o.attributes).map((item) => (
+                <div key={item.key} className="contents">
+                  <dt className="text-zinc-500">{item.label}</dt>
+                  <dd>{item.value}</dd>
                 </div>
               ))}
               <dt className="text-zinc-500">Confianza del modelo</dt>
               <dd>
-                {o.confidence === null ? "—" : <span className="tabular-nums">{formatNumber(o.confidence, 2)}</span>}{" "}
+                <span className="tabular-nums">{formatConfidence(o.confidence)}</span>{" "}
                 <span className="text-xs text-zinc-500">(salida del modelo en escala 0–1, no es una probabilidad calibrada)</span>
               </dd>
               <dt className="text-zinc-500">Evidencia</dt>
@@ -90,7 +100,7 @@ export function ObservationList({ observations, timeZone }: { observations: Plac
             {o.overlapsNotObserved.length > 0 && (
               <p className="mt-3 rounded bg-amber-50 px-3 py-2 text-amber-900 dark:bg-amber-950 dark:text-amber-200">
                 Parte de este episodio cae en tiempo no observado (
-                {o.overlapsNotObserved.map((s) => STATUS[s].label.toLowerCase()).join(", ")}).
+                {o.overlapsNotObserved.map((s) => COVERAGE_STATUS_LABELS[s].toLowerCase()).join(", ")}).
                 {o.observedMs <= 0 && " No se cuenta en el resumen del día."}
               </p>
             )}

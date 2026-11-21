@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { label, STUDY_STATUS_LABELS } from "@/components/format";
+import { label, STUDY_STATUS_LABELS } from "@/lib/labels";
 import { listStudies } from "@/lib/queries/studies";
 
 export const metadata: Metadata = { title: "Estudios · Observatorio Longitudinal Multimodal" };

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { label, STUDY_STATUS_LABELS } from "@/components/format";
+import { label, STUDY_STATUS_LABELS } from "@/lib/labels";
 import { StudyTabs } from "@/components/study-tabs";
 import { getStudyByCode } from "@/lib/queries/studies";
 
@@ -24,7 +24,7 @@ async function StudyHeader({ params }: { params: LayoutProps<"/studies/[code]">[
   return (
     <header className="flex flex-col gap-3">
       <div>
-        <p className="font-mono text-xs text-neutral-500">
+        <p className="font-mono text-xs text-neutral-500" translate="no">
           {study.code} · {label(STUDY_STATUS_LABELS, study.status)}
         </p>
         <h1 className="text-2xl font-semibold">{study.title}</h1>
