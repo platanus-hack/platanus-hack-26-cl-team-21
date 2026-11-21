@@ -20,7 +20,9 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="es" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    // Browser extensions add attributes to <html> before React hydrates (e.g. data-mbtss-nonce). This only
+    // silences attribute mismatches on <html> itself, one level deep; mismatches in children still show.
+    <html lang="es" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
       <body className="flex min-h-full flex-col">
         <header className="border-b border-neutral-200 dark:border-neutral-800">
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-3">
