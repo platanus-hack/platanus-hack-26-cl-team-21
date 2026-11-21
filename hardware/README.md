@@ -61,10 +61,9 @@ Ways to use the capsule, and the alternatives:
 |---|---|---|
 | **A. Capsule → USB sound card (mic in) → Raspberry Pi**, recording WAV with an NTP-synced clock | USB sound card + 3.5 mm plug | Good quality, low firmware risk. The sound card provides bias and preamp. A second recorder to synchronize, but the Pi has a real clock |
 | **B. Capsule → transistor preamp → Uno A2 → hardware UART → ESP32-CAM → WAV on SD** | 1 transistor (BC547/2N2222) or op-amp (LM358), resistors, capacitors | Telephone-like (8 kHz, 8-bit). High firmware risk: the Uno becomes an audio streamer, the link moves to hardware serial at 115200+ and USB debug is lost |
-| **C. Phone microphone** (the Android app records during the session) | nothing | Good quality, lowest risk, but it's not on the device |
-| D. I2S MEMS microphone (INMP441) on an ESP32-S3 | new parts | The production path |
+| C. I2S MEMS microphone (INMP441) on an ESP32-S3 | new parts | The production path |
 
-Until this is decided (§10), the device records **relative sound level only** (KY-037 → A2).
+The phone microphone is **ruled out**: it would break standardization (a different device, position and gain for every participant). Audio stays undecided for v0 and will be revisited with the board design (§10). Meanwhile the device records **relative sound level only** (KY-037 → A2).
 
 **Wi-Fi on the local network instead of BLE for v0.** BLE plus camera together strain the ESP32-CAM's memory, and the Android app would need two transports. The ESP32-CAM keeps a list of **known local networks** (lab, home, and the phone hotspot as a last resort) and joins the strongest one. If none is in range it opens its own access point. Either way:
 
@@ -268,8 +267,7 @@ All endpoints require `Authorization: Bearer <API_TOKEN>`. Wi-Fi: the device joi
 
 ## 10. Open questions
 
-1. **Audio:** which option (§2)? With the loose capsule, A needs a USB sound card and B needs a transistor or op-amp. Does the team have either?
-2. **Power bank:** is there a USB power bank for bench work and the demo (§5)?
-3. **Mounting:** height on the chest and camera angle (tilted ~20–30° down to see the plate).
+1. **Audio:** undecided, to be revisited with the board design (§2). No USB sound card is available, so option A is out for now.
+2. **Mounting:** height on the chest and camera angle (tilted ~20–30° down to see the plate).
 
-Resolved: the RTC is a DS1302, the buzzer (TMB12A05) is active, the battery is 260 mAh with no charging during the hackathon, and there's no IMU or wide-angle lens.
+Resolved: a USB power bank will be available for bench work and the demo, the RTC is a DS1302, the buzzer (TMB12A05) is active, the battery is 260 mAh with no charging during the hackathon, and there's no IMU or wide-angle lens.

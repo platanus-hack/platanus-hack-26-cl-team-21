@@ -52,7 +52,7 @@ Full proposal in [`hardware/README.md`](./hardware/README.md); decision record i
 - **Single chest-worn box (prototype):** size and power only constrain the prototype; production would be a custom pendant. Inside: ESP32-CAM (camera) + Arduino Uno (sensor hub) + 2S battery + LM2596 → 5 V.
 - **The Uno is the sensor hub and master clock:** DHT11, MQ-7, MQ-2, KY-037, RTC, buzzer, event button, privacy switch, battery voltage. It sends checksummed ASCII lines to the ESP32-CAM over UART.
 - **The ESP32-CAM** saves JPEG frames (2 fps, VGA) plus `frames.csv`, `sensors.csv`, `events.csv` and `session.json` per session on the microSD. It exposes a token-protected **HTTP API on the local network**: it joins the strongest known Wi-Fi (lab, home, phone hotspot), falls back to its own AP, and is reachable at `olm-<id>.local`. **No BLE in v0.**
-- **Audio recording is undecided:** the KY-037 only gives a relative level, and the loose electret capsule needs a preamp plus a recorder. Options are in `hardware/README.md` §2.
+- **Audio recording is undecided:** the KY-037 only gives a relative level, and the loose electret capsule needs a preamp plus a recorder. Options are in `hardware/README.md` §2. The phone microphone is ruled out because it breaks standardization.
 - **The privacy switch physically cuts the pendant's power**, and the hub logs the interval.
 - Open risks: GPIO12 strapping on the ESP32-CAM, brownouts when Wi-Fi starts, no IMU (no wear detection), and a 260 mAh battery that lasts ~18 min (bench and demo run from a USB power bank).
 
