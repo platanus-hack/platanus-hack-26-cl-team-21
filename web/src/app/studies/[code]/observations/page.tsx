@@ -29,7 +29,7 @@ type SearchParams = Awaited<Props["searchParams"]>;
 export default function ObservationsPage({ params, searchParams }: Props) {
   return (
     <div className="flex flex-col gap-6">
-      <Suspense fallback={<p className="text-sm text-zinc-500">Cargando observaciones…</p>}>
+      <Suspense fallback={<p className="text-sm text-ink-muted">Cargando observaciones…</p>}>
         <ObservationsContent params={params} searchParams={searchParams} />
       </Suspense>
     </div>
@@ -54,7 +54,7 @@ async function ObservationsContent({ params, searchParams }: Props) {
       <CoverageNote coverage={coverage} scope={describeScope(filters, coverage.participantCount)} />
       {/* Never a count of 0 for a scope with no observed time: nothing could have been detected there. */}
       {(rows.length > 0 || coverage.observedSeconds > 0) && (
-        <p className="text-sm text-zinc-600">
+        <p className="text-sm text-ink-muted">
           {[
             coverage.observedSeconds > 0 || counted > 0 ? `${plural(counted, "observación", "observaciones")} en tiempo observado` : null,
             counted < rows.length
@@ -67,7 +67,7 @@ async function ObservationsContent({ params, searchParams }: Props) {
         </p>
       )}
       {rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-600">
+        <p className="rounded-lg border border-dashed border-hairline p-6 text-center text-sm text-ink-muted">
           No hay observaciones actuales para estos filtros. Revisa la cobertura: sin tiempo observado no se pueden detectar episodios.
         </p>
       ) : (
@@ -79,9 +79,9 @@ async function ObservationsContent({ params, searchParams }: Props) {
 
 function ObservationTable({ rows, basePath }: { rows: ObservationRow[]; basePath: string }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-zinc-200">
+    <div className="overflow-x-auto rounded-lg border border-rule">
       <table className="w-full text-left text-sm">
-        <thead className="bg-zinc-50 text-xs text-zinc-600">
+        <thead className="bg-paper-deep text-xs text-ink-muted">
           <tr>
             <th className="px-3 py-2 font-medium">Participante</th>
             <th className="px-3 py-2 font-medium">Fecha</th>
@@ -97,36 +97,36 @@ function ObservationTable({ rows, basePath }: { rows: ObservationRow[]; basePath
             <th className="px-3 py-2 font-medium">Ejecución</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-100">
+        <tbody className="divide-y divide-rule">
           {rows.map((row) => (
-            <tr key={row.id} className="align-top hover:bg-zinc-50">
+            <tr key={row.id} className="align-top hover:bg-paper-deep">
               <td className="px-3 py-2">
                 <Link
                   href={`${basePath}/participants/${encodeURIComponent(row.pseudonym)}`}
-                  className="font-medium text-blue-700 underline-offset-2 hover:underline"
+                  className="font-medium text-secondary underline-offset-2 hover:underline"
                   title="Ver línea de tiempo del participante"
                 >
                   {row.pseudonym}
                 </Link>
-                <span className="block text-xs text-zinc-500">{row.timezone}</span>
+                <span className="block text-xs text-ink-muted">{row.timezone}</span>
               </td>
               <td className="px-3 py-2 tabular-nums whitespace-nowrap" title={row.local_date}>
                 {formatLocalDay(row.local_date)}
               </td>
               <td className="px-3 py-2 tabular-nums whitespace-nowrap">
                 {row.local_start}–{row.local_end}
-                {row.local_end_date !== row.local_date && <span className="text-xs text-zinc-500"> ({formatLocalDay(row.local_end_date)})</span>}
+                {row.local_end_date !== row.local_date && <span className="text-xs text-ink-muted"> ({formatLocalDay(row.local_end_date)})</span>}
               </td>
               <td className="px-3 py-2 tabular-nums whitespace-nowrap">{formatDuration(row.duration_s)}</td>
               <td className="px-3 py-2">
                 {eventTypeLabel(row.event_type_key, row.event_type_label)}
-                {!row.in_observed_time && <span className="block text-xs text-amber-800">Fuera del tiempo observado</span>}
+                {!row.in_observed_time && <span className="mt-1 inline-block rounded-full bg-warning px-2 py-0.5 text-xs font-medium text-ink">Fuera del tiempo observado</span>}
               </td>
               <td className="px-3 py-2">
                 <dl className="grid grid-cols-[auto_1fr] gap-x-2 text-xs">
                   {formatAttributes(row.attributes).map((item) => (
                     <div key={item.key} className="contents">
-                      <dt className="text-zinc-500">{item.label}</dt>
+                      <dt className="text-ink-muted">{item.label}</dt>
                       <dd>{item.value}</dd>
                     </div>
                   ))}
@@ -136,7 +136,7 @@ function ObservationTable({ rows, basePath }: { rows: ObservationRow[]; basePath
               <td className="px-3 py-2">
                 <ReviewBadge status={row.human_review_status} />
               </td>
-              <td className="px-3 py-2 text-xs text-zinc-600">
+              <td className="px-3 py-2 text-xs text-ink-muted">
                 <span className="block whitespace-nowrap">Modelo {row.model_version}</span>
                 <span className="block whitespace-nowrap">Pipeline {row.pipeline_version}</span>
                 <span className="block whitespace-nowrap">Protocolo {row.protocol_version}</span>

@@ -1,26 +1,42 @@
 @import "tailwindcss";
 
+/* Brand tokens, see web/design/GUIDELINES.md. Components use the Tailwind names below, never raw hex.
+   Light only: the portal has no dark theme. */
+@theme {
+  --color-paper: #f2e7e1;
+  --color-paper-deep: #e3d7cd;
+  --color-ink: #1a1a1a;
+  --color-ink-muted: #45423c;
+  --color-primary: #192859;
+  --color-on-primary: #ffffff;
+  --color-secondary: #28469e;
+  --color-highlight: #f27533;
+  --color-warning: #f6a321;
+  --color-error: #ba1a1a;
+  --color-hairline: rgb(26 26 26 / 0.6);
+  --color-rule: rgb(26 26 26 / 0.15);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-serif: var(--font-newsreader), ui-serif, Georgia, serif;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* In the base layer so Tailwind utilities (underline-offset-*, outline-*) can still override them. */
+@layer base {
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
   }
-}
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  :focus-visible {
+    outline: 2px solid var(--color-secondary);
+    outline-offset: 2px;
+  }
+
+  a {
+    text-underline-offset: 0.2em;
+  }
 }

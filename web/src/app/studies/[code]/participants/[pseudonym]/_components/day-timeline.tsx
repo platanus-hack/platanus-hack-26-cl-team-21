@@ -26,7 +26,7 @@ export function DayTimeline({ day, timeZone }: { day: TimelineDay; timeZone: str
         Cobertura y observaciones del día. Los episodios detectados son enlaces a su detalle; el tiempo no observado y sus motivos
         están en la tabla «Tiempo no observado» de este día.
       </figcaption>
-      <div className="relative h-11 overflow-hidden rounded-md bg-zinc-100 ring-1 ring-black/10 dark:bg-zinc-900 dark:ring-white/10">
+      <div className="relative h-11 overflow-hidden rounded-lg bg-paper-deep ring-1 ring-ink/15">
         {day.bands.map((band) => {
           const statusLabel = COVERAGE_STATUS_LABELS[band.status];
           const text = `${statusLabel}: ${formatRange(band.startMs, band.endMs, timeZone, day.endMs)} (${formatDuration((band.endMs - band.startMs) / 1000)})`;
@@ -35,11 +35,11 @@ export function DayTimeline({ day, timeZone }: { day: TimelineDay; timeZone: str
               key={band.startMs}
               title={text}
               aria-hidden
-              className="absolute inset-y-0 border-x border-white/70 dark:border-zinc-950/70"
+              className="absolute inset-y-0 border-x border-paper/70"
               style={{ left: `${band.leftPct}%`, width: `${band.widthPct}%`, ...COVERAGE_STATUS_STYLES[band.status] }}
             >
               {band.status !== "observed" && band.widthPct >= LABEL_MIN_PCT && (
-                <span className="pointer-events-none absolute left-1.5 top-1/2 max-w-[calc(100%-0.75rem)] -translate-y-1/2 truncate rounded bg-white/90 px-1.5 py-0.5 text-[11px] font-medium leading-none text-zinc-900">
+                <span className="pointer-events-none absolute left-1.5 top-1/2 max-w-[calc(100%-0.75rem)] -translate-y-1/2 truncate rounded bg-paper/90 px-1.5 py-0.5 text-[11px] font-medium leading-none text-ink">
                   {statusLabel}
                 </span>
               )}
@@ -54,15 +54,15 @@ export function DayTimeline({ day, timeZone }: { day: TimelineDay; timeZone: str
               href={`#obs-${o.id}`}
               title={text}
               aria-label={text}
-              className={`absolute inset-y-1.5 rounded-sm ring-2 ring-white transition-transform hover:scale-y-110 motion-reduce:transition-none motion-reduce:hover:scale-y-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 dark:ring-zinc-950 dark:focus-visible:outline-white ${
-                isHollowMarker(o.eventKey) ? "border-2 border-zinc-950 bg-white dark:border-white dark:bg-zinc-950" : "bg-zinc-950 dark:bg-white"
+              className={`absolute inset-y-1.5 rounded-sm ring-2 ring-paper transition-transform hover:scale-y-110 motion-reduce:transition-none motion-reduce:hover:scale-y-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary ${
+                isHollowMarker(o.eventKey) ? "border-2 border-ink bg-paper" : "bg-ink"
               }`}
               style={{ left: `${o.leftPct}%`, width: `max(6px, ${o.widthPct}%)` }}
             />
           );
         })}
       </div>
-      <div className="relative mt-1 h-4 text-[11px] tabular-nums text-zinc-500" aria-hidden>
+      <div className="relative mt-1 h-4 text-[11px] tabular-nums text-ink-muted" aria-hidden>
         {ticks.map((t, i) => (
           <span
             key={t.ms}

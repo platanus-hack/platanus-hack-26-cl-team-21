@@ -12,7 +12,7 @@ export function CoverageNote({ coverage, scope }: { coverage: CoverageSummary; s
   return (
     <section
       aria-labelledby="coverage-title"
-      className={`rounded-lg border p-4 text-sm ${partial ? "border-amber-300 bg-amber-50 text-amber-950" : "border-emerald-300 bg-emerald-50 text-emerald-950"}`}
+      className={`rounded-lg border p-4 text-sm ${partial ? "border-warning bg-warning/20 text-ink" : "border-rule bg-paper-deep text-ink"}`}
     >
       <h2 id="coverage-title" className="font-semibold">
         Cobertura del alcance filtrado <span className="font-normal">({scope})</span>

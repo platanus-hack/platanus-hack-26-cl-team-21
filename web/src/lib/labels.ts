@@ -104,9 +104,9 @@ export const REVIEW_STATUS_LABELS: Record<string, string> = {
 };
 
 export const REVIEW_STATUS_BADGE_CLASS: Record<string, string> = {
-  pending: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
-  confirmed: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-  corrected: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
+  pending: "bg-paper-deep text-ink",
+  confirmed: "bg-primary text-on-primary",
+  corrected: "bg-secondary text-on-primary",
 };
 
 // --- Event types ---

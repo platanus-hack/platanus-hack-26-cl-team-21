@@ -10,8 +10,8 @@ export const metadata: Metadata = { title: "Estudios · Observatorio Longitudina
 export default function StudiesPage() {
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Estudios</h1>
-      <Suspense fallback={<p className="text-sm text-neutral-500">Cargando estudios…</p>}>
+      <h1 className="font-serif text-3xl font-medium text-primary">Estudios</h1>
+      <Suspense fallback={<p className="text-sm text-ink-muted">Cargando estudios…</p>}>
         <StudyList />
       </Suspense>
     </div>
@@ -22,12 +22,12 @@ async function StudyList() {
   await connection();
   const studies = await listStudies();
   if (studies.length === 0) {
-    return <p className="text-sm text-neutral-500">Todavía no hay estudios.</p>;
+    return <p className="text-sm text-ink-muted">Todavía no hay estudios.</p>;
   }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="border-b border-neutral-200 text-neutral-500 dark:border-neutral-800">
+        <thead className="border-b border-rule text-ink-muted">
           <tr>
             <th className="py-2 pr-4 font-medium">Código</th>
             <th className="py-2 pr-4 font-medium">Título</th>
@@ -37,7 +37,7 @@ async function StudyList() {
         </thead>
         <tbody>
           {studies.map((study) => (
-            <tr key={study.code} className="border-b border-neutral-100 dark:border-neutral-900">
+            <tr key={study.code} className="border-b border-rule">
               <td className="py-2 pr-4 font-mono">
                 <Link href={`/studies/${encodeURIComponent(study.code)}`} className="underline underline-offset-2">
                   {study.code}

@@ -17,15 +17,15 @@ function describeParams(params: ExportHistoryItem["params"]) {
 export function ExportHistory({ items }: { items: ExportHistoryItem[] }) {
   if (items.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
+      <p className="rounded-lg border border-dashed border-hairline p-6 text-center text-sm text-ink-muted">
         Este estudio aún no tiene exportaciones.
       </p>
     );
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+    <div className="overflow-x-auto rounded-lg border border-rule">
       <table className="w-full text-left text-sm">
-        <thead className="bg-zinc-50 text-xs text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
+        <thead className="bg-paper-deep text-xs text-ink-muted">
           <tr>
             <th scope="col" className="px-3 py-2 font-medium">Fecha (hora de Santiago)</th>
             <th scope="col" className="px-3 py-2 font-medium">Solicitada por</th>
@@ -36,7 +36,7 @@ export function ExportHistory({ items }: { items: ExportHistoryItem[] }) {
             <th scope="col" className="px-3 py-2 font-medium">Estado</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+        <tbody className="divide-y divide-rule">
           {items.map((item) => {
             const described = describeParams(item.params);
             const format = item.format === "csv" && described.files > 1 ? "CSV (.zip)" : item.format.toUpperCase();
