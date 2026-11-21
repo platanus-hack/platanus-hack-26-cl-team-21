@@ -49,18 +49,22 @@ Layout notes: the MQ sensors go at the bottom with vents, the DHT11 on a side wa
 - The worker turns the frames into an MP4 with `ffmpeg` (variable frame rate, using the real timestamps) before the agent runs.
 - Bandwidth and SD wear stay low.
 
-**Audio.** We want audio for some studies (rating social interactions, the type of therapy received), but **the KY-037 can't record usable audio in this prototype**:
+**Audio.** We want audio for some studies (rating social interactions, the type of therapy received). We have a loose **electret capsule** (2 pins), the same kind of element the KY-037 carries. On its own it doesn't unlock recording, because a working microphone needs three things:
 
-- It's a sound *detector*: an electret capsule feeding an LM393 comparator. The analog output has very little gain, so speech would come out faint and noisy.
-- No board here can sample and store it. The Uno has 2 KB of RAM and no storage, and the ESP32-CAM's only free pins (4, 12, 13) are on ADC2, which can't be used while Wi-Fi is on.
+1. **Bias + preamp.** The capsule needs a bias resistor (2.2–10 kΩ to VCC) and a coupling capacitor. Its output is only a few to tens of mV, so it also needs an amplifier: a transistor or op-amp stage, or the mic input of a sound card. The KY-037 board has no real preamp; its LM393 is a comparator.
+2. **A continuously sampling ADC.** The ESP32-CAM's free pins (4, 12, 13) are on ADC2, which can't be used while Wi-Fi is on. The Uno can sample (~8 kHz, 10-bit), but it has 2 KB of RAM.
+3. **Storage.** Only the ESP32-CAM has the microSD.
 
-So on the device we record **relative sound level only**. Options for an audio proof of concept, still to be decided (§10):
+Ways to use the capsule, and the alternatives:
 
-| Option | Effort | Notes |
+| Option | Needs | Quality / risk |
 |---|---|---|
-| **A. Phone microphone** (the Android app records during the session, timestamped with the synced clock) | Low | Recommended for the demo; it exercises the whole audio pipeline (transcription → structured variables) |
-| B. Raspberry Pi + USB microphone or a USB webcam with mic | Medium | Only if we have the parts; adds a second recorder to synchronize |
-| C. I2S MEMS microphone (INMP441) on an ESP32-S3 | — | The production path; not available today |
+| **A. Capsule → USB sound card (mic in) → Raspberry Pi**, recording WAV with an NTP-synced clock | USB sound card + 3.5 mm plug | Good quality, low firmware risk. The sound card provides bias and preamp. A second recorder to synchronize, but the Pi has a real clock |
+| **B. Capsule → transistor preamp → Uno A2 → hardware UART → ESP32-CAM → WAV on SD** | 1 transistor (BC547/2N2222) or op-amp (LM358), resistors, capacitors | Telephone-like (8 kHz, 8-bit). High firmware risk: the Uno becomes an audio streamer, the link moves to hardware serial at 115200+ and USB debug is lost |
+| **C. Phone microphone** (the Android app records during the session) | nothing | Good quality, lowest risk, but it's not on the device |
+| D. I2S MEMS microphone (INMP441) on an ESP32-S3 | new parts | The production path |
+
+Until this is decided (§10), the device records **relative sound level only** (KY-037 → A2).
 
 **Wi-Fi on the local network instead of BLE for v0.** BLE plus camera together strain the ESP32-CAM's memory, and the Android app would need two transports. The ESP32-CAM keeps a list of **known local networks** (lab, home, and the phone hotspot as a last resort) and joins the strongest one. If none is in range it opens its own access point. Either way:
 
@@ -82,7 +86,7 @@ BLE is a stretch goal.
 | MQ-7 module | 1 | CO (relative) | Used at constant 5 V: **relative readings only** (see §8) |
 | MQ-2 module | 1 | flammable gases / smoke (relative) | ~150 mA heater, 20 s–few min warm-up |
 | KY-037 | 1 | sound level (relative) | Analog output; we compute peak-to-peak over 50 ms windows |
-| RTC module with CR2032 cell | 1 | master clock | I²C. Most likely DS3231 (ZS-042 board) or DS1307 (Tiny RTC): set `RTC_MODEL` in firmware. Check the chip marking (§10) |
+| RTC module DS1302 ("MH-Real-Time Clock Modules-2") + CR2032 | 1 | master clock | 3-wire interface (CLK/DAT/RST), `Rtc by Makuna` library. Drifts a few seconds per day: sync it from the phone at the start of every session |
 | Buzzer TMB12A05 | 1 | local notifications | **Active** 5 V buzzer (~30 mA): beeps on DC, `BUZZER_PASSIVE 0` |
 | Push button | 1 | event marker | To GND, internal pull-up |
 | Mini switch | 1 | **privacy switch** | Between the 5 V rail and the ESP32-CAM: the camera is physically unpowered. The Uno senses the switched side |
@@ -119,7 +123,7 @@ Battery + ── 10 kΩ ──┬── 10 kΩ ── GND
 | A1 | MQ-2 `AO` | |
 | A2 | KY-037 `AO` | Adjust the module pot so that silence reads ~mid-scale |
 | A3 | battery divider midpoint | `V_batt = adc * 5.0 / 1023 * 2` |
-| A4 / A5 | RTC `SDA` / `SCL` | |
+| A4 / A5 | free | |
 | D2 | DHT11 `DATA` | 10 kΩ pull-up to 5 V if the module doesn't have one |
 | D3 | event button → GND | `INPUT_PULLUP` |
 | D4 | privacy sense: ESP32-CAM side of the switch (via 10k/10k divider) | HIGH = camera powered = privacy **off** |
@@ -127,6 +131,7 @@ Battery + ── 10 kΩ ──┬── 10 kΩ ── GND
 | D6 | recording LED (front) via 330 Ω | ON only while capture heartbeats arrive |
 | D8 | ESP32-CAM GPIO12 (ESP TX) | SoftwareSerial RX. **No pull-up** (see §4.4) |
 | D9 | 1 kΩ → ESP32-CAM GPIO13, with 2 kΩ from GPIO13 to GND | SoftwareSerial TX, 5 V → 3.3 V divider |
+| D10 / D11 / D12 | RTC `CLK` / `DAT` / `RST` | DS1302 three-wire; VCC to 5 V |
 | D13 | onboard LED | heartbeat |
 | D0 / D1 | free (USB serial for debugging) | |
 
@@ -164,7 +169,16 @@ GPIO12 selects the flash voltage at boot: if it is HIGH during reset, the ESP32 
 | DHT11 + KY-037 + RTC + LED + buzzer | 15 mA | 40 mA |
 | **Total** | **~545 mA (2.7 W)** | **~840 mA** |
 
-At 7.4 V with ~85 % buck efficiency, the battery draws **~0.45 A**. With a 1000 mAh pack that's **~2 h** of continuous use; scale it with the real capacity on the label. The MQ heaters are 55 % of the load, so the easiest win is a second switch to turn the gas sensors off when the protocol doesn't need them.
+At 7.4 V with ~85 % buck efficiency, the battery draws **~0.45 A**. **Our battery is 260 mAh (0.96 Wh)**, which gives:
+
+| Configuration | Load | Runtime |
+|---|---:|---:|
+| Everything on | ~2.7 W | **~18 min** |
+| MQ sensors unplugged | ~1.2 W | ~40 min |
+
+There's a second problem: 0.45 A typical and ~0.7 A peaks are 1.7–2.6 C for such a small cell. The voltage will sag, and its protection circuit may cut out exactly when Wi-Fi starts.
+
+**Recommendation:** run the bench work and the demo from a **USB power bank (5 V, ≥2 A) wired straight to the 5 V rail**, bypassing the buck, with a USB cable cut open or a USB breakout. Keep the 260 mAh battery for a short untethered segment of the demo (≤15 min, starting full). If the MQ sensors aren't needed in a session, unplug their 5 V: they're 55 % of the load.
 
 The Uno measures battery voltage on A3 and reports it every second. Thresholds for a 2S pack: **< 7.0 V = low** (buzzer warning, `low_battery` event), **< 6.6 V = critical** (stop capture cleanly).
 
@@ -234,7 +248,8 @@ All endpoints require `Authorization: Bearer <API_TOKEN>`. Wi-Fi: the device joi
 - **MQ sensors** need minutes of warm-up (hours of burn-in for stable baselines). Discard the first minutes of each session.
 - **KY-037** gives a relative level, not calibrated dB.
 - **DHT11** near the body and the electronics reads warmer than the room. That's why it lives in the hub, away from the MQ heaters.
-- There is **no IMU**, so we can't tell "worn" from "on the table". Mitigations: an image-based check in the worker (dark or static frames → `low_quality`), plus adding an MPU-6050 if we can get one.
+- There is **no IMU** (none available), so we can't tell "worn" from "on the table". Mitigation: an image-based check in the worker (dark or static frames → `low_quality`).
+- The camera keeps the **stock ~66° lens** (no wide-angle available). Tilt the camera ~20–30° down and validate early that plate and hands are in frame while seated at a table.
 
 ## 9. Bring-up plan (each step independently testable)
 
@@ -253,8 +268,8 @@ All endpoints require `Authorization: Bearer <API_TOKEN>`. Wi-Fi: the device joi
 
 ## 10. Open questions
 
-1. **RTC chip:** read the marking on the large chip, or check the board. A **DS3231** board (ZS-042, blue, 6 pins: 32K, SQW, SCL, SDA, VCC, GND) works with `RTC_MODEL 3231`. A **DS1307** board (Tiny RTC, 2 rows of pins) needs `RTC_MODEL 1307`. If the pins are labeled CLK/DAT/RST, it's a DS1302 (3-wire), which needs code changes.
-2. **Audio proof of concept:** option A (phone mic), B (Pi + USB mic) or skip it for the demo (§2).
-3. **IMU (MPU-6050) and wide-angle camera:** can we get either? The IMU enables wear detection; a wide-angle lens (120–160°) would show the plate and the hands much better than the stock ~66°.
-4. **Battery capacity:** read the mAh on the label, so we know how long the demo can run (§5).
-5. **Mounting:** height on the chest and camera angle (tilted ~20–30° down to see the plate).
+1. **Audio:** which option (§2)? With the loose capsule, A needs a USB sound card and B needs a transistor or op-amp. Does the team have either?
+2. **Power bank:** is there a USB power bank for bench work and the demo (§5)?
+3. **Mounting:** height on the chest and camera angle (tilted ~20–30° down to see the plate).
+
+Resolved: the RTC is a DS1302, the buzzer (TMB12A05) is active, the battery is 260 mAh with no charging during the hackathon, and there's no IMU or wide-angle lens.

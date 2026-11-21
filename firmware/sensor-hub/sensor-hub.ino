@@ -4,14 +4,13 @@
 
 #include <SoftwareSerial.h>
 #include <EEPROM.h>
-#include <Wire.h>
 #include <DHT.h>
-#include <RTClib.h>
+#include <ThreeWire.h>
+#include <RtcDS1302.h>   // "Rtc by Makuna" library
 
 // ---------- Configuration ----------
 #define FIRMWARE_VERSION "hub-0.1.0"
 #define BUZZER_PASSIVE 0          // TMB12A05 is an active 5 V buzzer (beeps on DC). 1 = passive (tone)
-#define RTC_MODEL 3231             // 3231 = DS3231 (ZS-042 board), 1307 = DS1307 (Tiny RTC). Both I2C @ 0x68
 #define SAMPLE_PERIOD_MS 1000UL
 #define SOUND_WINDOW_MS 50UL
 #define REC_TIMEOUT_MS 3000UL
@@ -27,24 +26,23 @@ const uint8_t PIN_SOUND = A2;
 const uint8_t PIN_BATT = A3;
 const uint8_t PIN_DHT = 2;
 const uint8_t PIN_BUTTON = 3;
-const uint8_t PIN_PRIVACY_SENSE = 4;  // HIGH = pendant powered = privacy OFF
+const uint8_t PIN_PRIVACY_SENSE = 4;  // HIGH = camera powered = privacy OFF
 const uint8_t PIN_BUZZER = 5;
 const uint8_t PIN_REC_LED = 6;
 const uint8_t PIN_LINK_RX = 8;        // from ESP32-CAM GPIO12 (no pull-up! strapping pin)
 const uint8_t PIN_LINK_TX = 9;        // to ESP32-CAM GPIO13 via 1k/2k divider
+const uint8_t PIN_RTC_CLK = 10;       // DS1302 module ("MH-Real-Time Clock Modules-2")
+const uint8_t PIN_RTC_DAT = 11;
+const uint8_t PIN_RTC_RST = 12;
 const uint8_t PIN_HEARTBEAT = LED_BUILTIN;
 
 const int EEPROM_PRIVACY_ADDR = 0;    // uint32_t epoch of last PRIVACY_ON (0 = none)
 
 SoftwareSerial hubLink(PIN_LINK_RX, PIN_LINK_TX);
 DHT dht(PIN_DHT, DHT11);
-#if RTC_MODEL == 1307
-RTC_DS1307 rtc;
-#else
-RTC_DS3231 rtc;
-#endif
+ThreeWire rtcWire(PIN_RTC_DAT, PIN_RTC_CLK, PIN_RTC_RST);
+RtcDS1302<ThreeWire> rtc(rtcWire);
 
-bool rtcOk = false;
 bool privacyOn = false;
 bool lowBatt = false;
 bool critBatt = false;
@@ -58,7 +56,13 @@ char rxBuf[64];
 uint8_t rxLen = 0;
 
 // ---------- Helpers ----------
-uint32_t nowEpoch() { return rtcOk ? rtc.now().unixtime() : 0; }
+// The DS1302 has no presence or power-loss flag: an implausible date means "unknown" (0).
+// The ESP32-CAM ignores epochs before 2023-11, so frames fall back to uptime only.
+const uint32_t MIN_VALID_EPOCH = 1700000000UL;
+uint32_t nowEpoch() {
+  uint32_t t = rtc.GetDateTime().Unix32Time();
+  return t >= MIN_VALID_EPOCH ? t : 0;
+}
 
 uint8_t checksum(const char *s) {
   uint8_t c = 0;
@@ -145,8 +149,10 @@ void handleCommand(char *line) {
     uint32_t epoch = strtoul(line + 7, nullptr, 10);
     char old[12];
     snprintf(old, sizeof(old), "%lu", nowEpoch());
-    if (rtcOk && epoch > 1700000000UL) {
-      rtc.adjust(DateTime(epoch));
+    if (epoch >= MIN_VALID_EPOCH) {
+      RtcDateTime dt;
+      dt.InitWithUnix32Time(epoch);
+      rtc.SetDateTime(dt);
       sendEvent("RTC_SET", old);
     }
     sendLine("A,TIME,OK");
@@ -262,18 +268,17 @@ void setup() {
   pinMode(PIN_HEARTBEAT, OUTPUT);
 
   dht.begin();
-  rtcOk = rtc.begin();
+  rtc.Begin();
+  if (rtc.GetIsWriteProtected()) rtc.SetIsWriteProtected(false);
+  bool rtcWasStopped = !rtc.GetIsRunning();
+  if (rtcWasStopped) rtc.SetIsRunning(true);
 
   privacyOn = digitalRead(PIN_PRIVACY_SENSE) == LOW;
   setLinkPowered(!privacyOn);
 
   sendEvent("BOOT", FIRMWARE_VERSION);
-  if (!rtcOk) sendEvent("RTC_LOST", "not_found");
-#if RTC_MODEL == 1307
-  else if (!rtc.isrunning()) sendEvent("RTC_LOST", "lost_power");
-#else
-  else if (rtc.lostPower()) sendEvent("RTC_LOST", "lost_power");
-#endif
+  if (rtcWasStopped) sendEvent("RTC_LOST", "stopped");
+  else if (nowEpoch() == 0) sendEvent("RTC_LOST", "invalid_time");
 }
 
 void loop() {

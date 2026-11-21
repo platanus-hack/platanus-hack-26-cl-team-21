@@ -15,7 +15,7 @@ Wiring, the UART protocol, the SD layout and the HTTP API are in [`../hardware/R
 arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
 arduino-cli core update-index
 arduino-cli core install arduino:avr esp32:esp32
-arduino-cli lib install "DHT sensor library" "Adafruit Unified Sensor" "RTClib"
+arduino-cli lib install "DHT sensor library" "Adafruit Unified Sensor" "Rtc by Makuna"
 ```
 
 Arduino IDE works too: install the same cores and libraries from the Boards and Library managers.
@@ -46,5 +46,6 @@ arduino-cli monitor -p /dev/cu.usbserial-* -c baudrate=115200
   curl -H "$T" -X POST "http://olm-<id>.local/capture/start?protocol=eating-v1"
   curl -H "$T" http://olm-<id>.local/sessions
   ```
-- Config flags at the top of `sensor-hub.ino`: `RTC_MODEL` (3231 or 1307) and `BUZZER_PASSIVE` (0 for the TMB12A05).
+- Config flag at the top of `sensor-hub.ino`: `BUZZER_PASSIVE` (0 for the TMB12A05). The RTC is a DS1302 on D10–D12.
+- The DS1302 starts with an invalid date: sync it once (`/time`) before the first session, or the frames carry no epoch.
 - `secrets.h` is git-ignored; never commit Wi-Fi credentials.
