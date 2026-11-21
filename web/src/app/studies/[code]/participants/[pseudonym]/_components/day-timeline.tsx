@@ -4,7 +4,8 @@ import { STATUS, eventLabel, isHollowMarker } from "./labels";
 
 const HOUR_MS = 3_600_000;
 const TICK_HOURS = 3;
-// A band this wide (share of the day) has room for its status label inside it.
+// A non-observed band this wide (share of the day) has room for its status label inside it.
+// Observed bands carry no label: they are the only solid fill, and markers would cover the text.
 const LABEL_MIN_PCT = 12;
 
 /**
@@ -37,7 +38,7 @@ export function DayTimeline({ day, timeZone }: { day: TimelineDay; timeZone: str
               className="absolute inset-y-0 border-x border-white/70 dark:border-zinc-950/70"
               style={{ left: `${band.leftPct}%`, width: `${band.widthPct}%`, ...status.style }}
             >
-              {band.widthPct >= LABEL_MIN_PCT && (
+              {band.status !== "observed" && band.widthPct >= LABEL_MIN_PCT && (
                 <span className="pointer-events-none absolute left-1.5 top-1/2 max-w-[calc(100%-0.75rem)] -translate-y-1/2 truncate rounded bg-white/90 px-1.5 py-0.5 text-[11px] font-medium leading-none text-zinc-900">
                   {status.label}
                 </span>

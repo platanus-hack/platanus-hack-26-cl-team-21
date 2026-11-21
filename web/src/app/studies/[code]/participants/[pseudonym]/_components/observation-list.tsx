@@ -1,6 +1,6 @@
 import type { PlacedObservation, SensorStat } from "@/lib/queries/timeline";
 import { formatDuration, formatNumber, formatRange } from "./format";
-import { REVIEW_STATUS, STATUS, attributeLabel, attributeValue, eventLabel, isHollowMarker, sensorInfo } from "./labels";
+import { REVIEW_STATUS, STATUS, attributeLabel, attributeValue, eventLabel, isHollowMarker, plural, sensorInfo, sortedAttributes } from "./labels";
 
 function SensorContext({ stats }: { stats: SensorStat[] }) {
   const withReadings = stats.filter((s) => s.n > 0 && s.mean !== null);
@@ -47,7 +47,7 @@ export function ObservationList({ observations, timeZone }: { observations: Plac
     <ol className="space-y-3">
       {observations.map((o) => {
         const review = REVIEW_STATUS[o.reviewStatus] ?? { label: o.reviewStatus, className: "bg-zinc-100 text-zinc-700" };
-        const attributes = Object.entries(o.attributes);
+        const attributes = sortedAttributes(o.attributes);
         return (
           <li
             key={o.id}
@@ -80,9 +80,7 @@ export function ObservationList({ observations, timeZone }: { observations: Plac
                 <span className="text-xs text-zinc-500">(salida del modelo en escala 0–1, no es una probabilidad calibrada)</span>
               </dd>
               <dt className="text-zinc-500">Evidencia</dt>
-              <dd>
-                {o.evidenceCount} clip(s) de video original
-              </dd>
+              <dd>{plural(o.evidenceCount, "clip de video original", "clips de video original")}</dd>
               <dt className="text-zinc-500">Procedencia</dt>
               <dd className="text-xs text-zinc-600 dark:text-zinc-400">
                 Protocolo {o.protocolVersion} · modelo {o.modelVersion} · pipeline {o.pipelineVersion}

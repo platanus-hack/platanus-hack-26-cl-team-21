@@ -64,6 +64,17 @@ const EVENT_LABELS: Record<string, string> = {
 
 export const eventLabel = (key: string, fallback: string) => EVENT_LABELS[key] ?? fallback;
 
+const EVENT_PLURALS: Record<string, string> = {
+  eating_episode: "episodios de alimentación",
+  drinking_episode: "episodios de bebida",
+};
+
+/** Lower-case event label agreeing with `count` ("1 episodio de bebida", "2 episodios de bebida"). */
+export const eventCountLabel = (key: string, fallback: string, count: number) =>
+  count === 1 ? eventLabel(key, fallback).toLowerCase() : (EVENT_PLURALS[key] ?? eventLabel(key, fallback).toLowerCase());
+
+export const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
 /** Drinking is drawn hollow, everything else solid, so the two read apart without colour. */
 export const isHollowMarker = (eventKey: string) => eventKey === "drinking_episode";
 
@@ -79,6 +90,13 @@ const ATTRIBUTE_VALUES: Record<string, Record<string, string>> = {
 };
 
 export const attributeLabel = (key: string) => ATTRIBUTE_LABELS[key] ?? key;
+
+/** Known attributes in protocol order (jsonb returns keys sorted by length), then the rest. */
+export function sortedAttributes(attributes: Record<string, unknown>) {
+  const known = Object.keys(ATTRIBUTE_LABELS);
+  const rank = (key: string) => (known.includes(key) ? known.indexOf(key) : known.length);
+  return Object.entries(attributes).sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b));
+}
 
 export function attributeValue(key: string, value: unknown): string {
   if (Array.isArray(value)) return value.map((v) => attributeValue(key, v)).join(", ");

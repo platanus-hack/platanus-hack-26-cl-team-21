@@ -225,10 +225,18 @@ export function buildDay(
   const pct = (ms: number) => ((ms - startMs) / dayMs) * 100;
 
   // Coverage clipped to the day; any stretch without an interval becomes an explicit "no_record".
+  // Touching intervals with the same status (e.g. consecutive observed segments) merge into one band.
   const bands: Band[] = [];
   let cursor = startMs;
   const push = (status: BandStatus, from: number, to: number) => {
-    if (to > from) bands.push({ status, startMs: from, endMs: to, leftPct: pct(from), widthPct: pct(to) - pct(from) });
+    if (to <= from) return;
+    const last = bands.at(-1);
+    if (last && last.status === status && last.endMs === from) {
+      last.endMs = to;
+      last.widthPct = pct(to) - last.leftPct;
+    } else {
+      bands.push({ status, startMs: from, endMs: to, leftPct: pct(from), widthPct: pct(to) - pct(from) });
+    }
   };
   for (const c of coverage) {
     const from = Math.max(c.startMs, startMs);

@@ -1,6 +1,6 @@
 import type { TimelineDay } from "@/lib/queries/timeline";
 import { formatDuration, formatPercent, formatRange } from "./format";
-import { STATUS, eventLabel } from "./labels";
+import { STATUS, eventCountLabel } from "./labels";
 
 /**
  * Per-day summary. Episodes are counted over observed time only; when nothing was observed no
@@ -33,7 +33,7 @@ export function DaySummary({ day, timeZone }: { day: TimelineDay; timeZone: stri
                 {summary.counts.map((c) => (
                   <li key={c.eventKey} className="flex flex-wrap items-baseline gap-x-2">
                     <span className="text-lg font-semibold tabular-nums">{c.count}</span>
-                    <span>{eventLabel(c.eventKey, c.eventLabel).toLowerCase()}</span>
+                    <span>{eventCountLabel(c.eventKey, c.eventLabel, c.count)}</span>
                     <span className="text-zinc-500">· duración observada {formatDuration(c.observedMs)}</span>
                   </li>
                 ))}
@@ -41,7 +41,9 @@ export function DaySummary({ day, timeZone }: { day: TimelineDay; timeZone: stri
             )}
             {summary.uncounted > 0 && (
               <p className="mt-2 text-amber-800 dark:text-amber-300">
-                {summary.uncounted} episodio(s) caen fuera del tiempo observado y no se cuentan.
+                {summary.uncounted === 1
+                  ? "1 episodio cae fuera del tiempo observado y no se cuenta."
+                  : `${summary.uncounted} episodios caen fuera del tiempo observado y no se cuentan.`}
               </p>
             )}
           </>
