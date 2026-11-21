@@ -3,6 +3,8 @@
 // Board: "AI Thinker ESP32-CAM" (esp32:esp32:esp32cam). Needs PSRAM.
 
 #include <WiFi.h>
+#include <WiFiMulti.h>
+#include <ESPmDNS.h>
 #include <WebServer.h>
 #include <FS.h>
 #include <SD_MMC.h>
@@ -39,7 +41,8 @@
 #define PCLK_GPIO_NUM 22
 
 WebServer server(80);
-HardwareSerial link(2);
+WiFiMulti wifiMulti;
+HardwareSerial hubLink(2);
 
 String deviceId;
 bool sdOk = false, camOk = false;
@@ -63,6 +66,7 @@ char rxBuf[128];
 size_t rxLen = 0;
 
 // ---------- Helpers ----------
+void sendJson(int code, const String &body);
 uint64_t nowEpochMs() { return clockOk ? (uint64_t)((int64_t)millis() + epochOffsetMs) : 0; }
 
 uint8_t checksum(const char *s) {
@@ -74,8 +78,8 @@ uint8_t checksum(const char *s) {
 void sendCommand(const String &payload) {
   char tail[5];
   snprintf(tail, sizeof(tail), "*%02X", checksum(payload.c_str()));
-  link.print(payload);
-  link.println(tail);
+  hubLink.print(payload);
+  hubLink.println(tail);
 }
 
 void appendLine(const String &path, const String &line) {
@@ -152,8 +156,8 @@ void handleHubLine(char *raw) {
 }
 
 void pollLink() {
-  while (link.available()) {
-    char c = link.read();
+  while (hubLink.available()) {
+    char c = hubLink.read();
     if (c == '\n' || c == '\r') {
       if (rxLen > 0) {
         rxBuf[rxLen] = '\0';
@@ -221,6 +225,7 @@ void captureFrame() {
 void sendJson(int code, const String &body) { server.send(code, "application/json", body); }
 
 void handleStatus() {
+  if (!authorized()) return;
   String body = "{";
   body += "\"device_id\":\"" + deviceId + "\",";
   body += "\"firmware_version\":\"" FIRMWARE_VERSION "\",";
@@ -241,28 +246,33 @@ void handleStatus() {
 }
 
 void handleTime() {
+  if (!authorized()) return;
   if (!server.hasArg("epoch")) return sendJson(400, "{\"error\":\"missing epoch\"}");
   sendCommand("C,TIME," + server.arg("epoch"));
   sendJson(202, "{\"status\":\"forwarded\"}");
 }
 
 void handleCaptureStart() {
+  if (!authorized()) return;
   if (!startSession(server.arg("protocol"))) return sendJson(503, "{\"error\":\"camera or sd unavailable\"}");
   sendJson(200, "{\"session_id\":\"" + sessionId + "\"}");
 }
 
 void handleCaptureStop() {
+  if (!authorized()) return;
   stopSession();
   sendJson(200, "{\"status\":\"stopped\"}");
 }
 
 void handleBuzz() {
+  if (!authorized()) return;
   String p = server.hasArg("pattern") ? server.arg("pattern") : "SHORT";
   sendCommand("C,BUZZ," + p);
   sendJson(202, "{\"status\":\"forwarded\"}");
 }
 
 void handleSessions() {
+  if (!authorized()) return;
   String body = "[";
   File dir = SD_MMC.open("/sessions");
   bool first = true;
@@ -296,6 +306,7 @@ bool removeRecursive(const String &path) {
 
 // /sessions/<id>/<file> and /sessions/<id>/frames/<n>.jpg, plus DELETE /sessions/<id>
 void handleNotFound() {
+  if (!authorized()) return;
   String uri = server.uri();
   if (!uri.startsWith("/sessions/") || uri.indexOf("..") >= 0) return sendJson(404, "{\"error\":\"not found\"}");
 
@@ -332,24 +343,40 @@ bool initCamera() {
   return esp_camera_init(&c) == ESP_OK;
 }
 
+// Joins the strongest known local network (home, lab, or the phone hotspot as a last resort).
+// Traffic stays on the local network: the device never talks to the internet.
+// If none is in range, it opens its own AP "OLM-<device_id>" so the phone can connect directly.
 void initWifi() {
   WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) delay(250);
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("Wi-Fi STA: %s\n", WiFi.localIP().toString().c_str());
-    return;
+  for (size_t i = 0; i < sizeof(WIFI_NETWORKS) / sizeof(WIFI_NETWORKS[0]); i++) {
+    wifiMulti.addAP(WIFI_NETWORKS[i][0], WIFI_NETWORKS[i][1]);
   }
-  WiFi.mode(WIFI_AP);
-  String ssid = "OLM-" + deviceId;
-  WiFi.softAP(ssid.c_str(), AP_PASS);
-  Serial.printf("Wi-Fi AP %s: %s\n", ssid.c_str(), WiFi.softAPIP().toString().c_str());
+  unsigned long start = millis();
+  while (wifiMulti.run() != WL_CONNECTED && millis() - start < 20000) delay(500);
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("Wi-Fi STA %s: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+  } else {
+    WiFi.mode(WIFI_AP);
+    String ssid = "OLM-" + deviceId;
+    WiFi.softAP(ssid.c_str(), AP_PASS);
+    Serial.printf("Wi-Fi AP %s: %s\n", ssid.c_str(), WiFi.softAPIP().toString().c_str());
+  }
+  // Discoverable as http://olm-<device_id>.local on the local network.
+  String host = "olm-" + deviceId;
+  if (MDNS.begin(host.c_str())) MDNS.addService("http", "tcp", 80);
+}
+
+// Every request must carry "Authorization: Bearer <API_TOKEN>" (shared at pairing time).
+// This keeps other devices on the same network out; traffic is still unencrypted HTTP on the LAN.
+bool authorized() {
+  if (server.header("Authorization") == String("Bearer ") + API_TOKEN) return true;
+  sendJson(401, "{\"error\":\"unauthorized\"}");
+  return false;
 }
 
 void setup() {
   Serial.begin(115200);
-  link.begin(LINK_BAUD, SERIAL_8N1, PIN_LINK_RX, PIN_LINK_TX);
+  hubLink.begin(LINK_BAUD, SERIAL_8N1, PIN_LINK_RX, PIN_LINK_TX);
   pinMode(PIN_RED_LED, OUTPUT);
   digitalWrite(PIN_RED_LED, HIGH);
 
@@ -371,6 +398,8 @@ void setup() {
   server.on("/buzz", HTTP_POST, handleBuzz);
   server.on("/sessions", HTTP_GET, handleSessions);
   server.onNotFound(handleNotFound);
+  const char *headers[] = {"Authorization"};
+  server.collectHeaders(headers, 1);
   server.begin();
 
   sendCommand("C,HELLO");  // the hub replays any privacy interval

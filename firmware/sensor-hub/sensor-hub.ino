@@ -10,7 +10,8 @@
 
 // ---------- Configuration ----------
 #define FIRMWARE_VERSION "hub-0.1.0"
-#define BUZZER_PASSIVE 1          // 1 = passive buzzer (tone), 0 = active buzzer (DC)
+#define BUZZER_PASSIVE 0          // TMB12A05 is an active 5 V buzzer (beeps on DC). 1 = passive (tone)
+#define RTC_MODEL 3231             // 3231 = DS3231 (ZS-042 board), 1307 = DS1307 (Tiny RTC). Both I2C @ 0x68
 #define SAMPLE_PERIOD_MS 1000UL
 #define SOUND_WINDOW_MS 50UL
 #define REC_TIMEOUT_MS 3000UL
@@ -35,9 +36,13 @@ const uint8_t PIN_HEARTBEAT = LED_BUILTIN;
 
 const int EEPROM_PRIVACY_ADDR = 0;    // uint32_t epoch of last PRIVACY_ON (0 = none)
 
-SoftwareSerial link(PIN_LINK_RX, PIN_LINK_TX);
+SoftwareSerial hubLink(PIN_LINK_RX, PIN_LINK_TX);
 DHT dht(PIN_DHT, DHT11);
+#if RTC_MODEL == 1307
+RTC_DS1307 rtc;
+#else
 RTC_DS3231 rtc;
+#endif
 
 bool rtcOk = false;
 bool privacyOn = false;
@@ -66,8 +71,8 @@ void sendLine(const char *payload) {
   char tail[5];
   snprintf(tail, sizeof(tail), "*%02X", checksum(payload));
   if (!privacyOn) {
-    link.print(payload);
-    link.println(tail);
+    hubLink.print(payload);
+    hubLink.println(tail);
   }
   Serial.print(payload);
   Serial.println(tail);
@@ -169,8 +174,8 @@ void handleCommand(char *line) {
 }
 
 void pollLink() {
-  while (link.available()) {
-    char c = link.read();
+  while (hubLink.available()) {
+    char c = hubLink.read();
     if (c == '\n' || c == '\r') {
       if (rxLen > 0) {
         rxBuf[rxLen] = '\0';
@@ -247,7 +252,7 @@ void sample() {
 // ---------- Main ----------
 void setup() {
   Serial.begin(115200);
-  link.begin(19200);
+  hubLink.begin(19200);
   pinMode(PIN_LINK_RX, INPUT);  // after begin(): remove SoftwareSerial's pull-up (GPIO12 strapping)
 
   pinMode(PIN_BUTTON, INPUT_PULLUP);
@@ -264,7 +269,11 @@ void setup() {
 
   sendEvent("BOOT", FIRMWARE_VERSION);
   if (!rtcOk) sendEvent("RTC_LOST", "not_found");
+#if RTC_MODEL == 1307
+  else if (!rtc.isrunning()) sendEvent("RTC_LOST", "lost_power");
+#else
   else if (rtc.lostPower()) sendEvent("RTC_LOST", "lost_power");
+#endif
 }
 
 void loop() {

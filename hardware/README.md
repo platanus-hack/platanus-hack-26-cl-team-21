@@ -1,6 +1,6 @@
-# Hardware proposal: pendant + sensor hub (v0)
+# Hardware proposal: chest-worn prototype (v0)
 
-Owner: Alendi. Status: **proposal**. The firmware in `firmware/` is a first draft that **has not been compiled yet**. Every pin and value below should be verified on the bench before soldering. Open questions are listed in §10.
+Owner: Alendi. Status: **proposal**. The firmware in `firmware/` compiles (Uno and ESP32-CAM) but **has not been tested on hardware yet**. Every pin and value below should be verified on the bench before soldering. Open questions are listed in §10.
 
 ## 1. Goals for the demo
 
@@ -12,27 +12,32 @@ The prototype must produce, for a scripted eating session:
 4. **Participant markers**: event button presses.
 5. **Transfer to the Android app over Wi-Fi**, with nothing leaving the phone before review.
 
-Out of scope for v0: audio recording, calibrated gas concentrations, calibrated dB, IMU-based wear detection, BLE.
+Out of scope for v0: audio recording on the device (see §2, *Audio*), calibrated gas concentrations, calibrated dB, IMU-based wear detection, BLE, battery charging.
+
+**Size and power are prototype-only constraints.** v0 is a single box worn on the chest with a strap or harness. It doesn't need to look like a necklace. A production version would be a custom PCB in a comfortable pendant form factor.
 
 ## 2. Architecture
 
-The parts list doesn't fit comfortably in one pendant: the Arduino Uno is 68×53 mm, the MQ heaters get hot, and the sensors shouldn't sit next to the participant's breath. We therefore split the device in two, connected by a 5-wire cable (switched 5 V, GND, TX, RX, LED):
+A single enclosure (~12×9×5 cm) worn on the chest, with the camera on the front face tilted slightly down. Inside are two boards with separate jobs:
 
 ```text
- PENDANT (chest, ~45x60 mm)              HUB (belt / arm pack)
- ┌──────────────────────────┐   cable   ┌───────────────────────────────────────┐
- │ ESP32-CAM (OV2640)       │  5V ──────│ LM2596 buck 7.4 V -> 5 V   ◄── battery │
- │  - camera + microSD      │  GND ─────│                                        │
- │  - Wi-Fi (HTTP server)   │  TX/RX ───│ Arduino Uno = sensor hub               │
- │ Recording LED (red)      │  LED ─────│  DHT11, MQ-7, MQ-2, KY-037, RTC        │
- └──────────────────────────┘           │  buzzer, event button, privacy switch  │
-                                        │  battery voltage divider               │
-                                        └───────────────────────────────────────┘
+ ┌──────────────────────────── chest box ─────────────────────────────┐
+ │  battery 7.4 V ──► LM2596 buck ──► 5 V rail ─┬──► Arduino Uno (sensor hub)│
+ │                                               │     DHT11, MQ-7, MQ-2,     │
+ │                          privacy switch ──────┘     KY-037, RTC, buzzer,   │
+ │                                │                    event button, battery  │
+ │                                ▼                    divider                │
+ │                          ESP32-CAM ◄──── UART ────► (Uno D8/D9)            │
+ │                           camera (front), microSD, Wi-Fi HTTP API          │
+ │                           recording LED (front, driven by the Uno)         │
+ └─────────────────────────────────────────────────────────────────────┘
 ```
+
+Layout notes: the MQ sensors go at the bottom with vents, the DHT11 on a side wall away from them, and the camera, LED and privacy switch on the front. The switch must be easy to reach.
 
 **Division of responsibilities**
 
-| | ESP32-CAM (pendant) | Arduino Uno (hub) |
+| | ESP32-CAM (camera module) | Arduino Uno (sensor hub) |
 |---|---|---|
 | Owns | camera, microSD, Wi-Fi, session files | sensors, RTC (master clock), buzzer, button, privacy switch, battery measurement |
 | Why | the ESP32-CAM has almost no free GPIOs once camera and SD are in use | the Uno has 6 analog inputs and 5 V logic, which the MQ sensors and KY-037 need |
@@ -44,28 +49,46 @@ The parts list doesn't fit comfortably in one pendant: the Arduino Uno is 68×53
 - The worker turns the frames into an MP4 with `ffmpeg` (variable frame rate, using the real timestamps) before the agent runs.
 - Bandwidth and SD wear stay low.
 
-**Why there is no audio.** The ESP32-CAM has no usable audio input, and the KY-037 only outputs an analog level. We record **relative sound level only**, which is also the privacy-preserving choice (no intelligible speech). It's worth saying in the pitch.
+**Audio.** We want audio for some studies (rating social interactions, the type of therapy received), but **the KY-037 can't record usable audio in this prototype**:
 
-**Why Wi-Fi instead of BLE for v0.** BLE plus camera together strain the ESP32-CAM's memory, and the Android app would need two transports. In v0 the ESP32-CAM joins the phone's hotspot (or opens its own AP) and exposes a small HTTP API (§7) for status, time sync and file download. BLE is a stretch goal.
+- It's a sound *detector*: an electret capsule feeding an LM393 comparator. The analog output has very little gain, so speech would come out faint and noisy.
+- No board here can sample and store it. The Uno has 2 KB of RAM and no storage, and the ESP32-CAM's only free pins (4, 12, 13) are on ADC2, which can't be used while Wi-Fi is on.
+
+So on the device we record **relative sound level only**. Options for an audio proof of concept, still to be decided (§10):
+
+| Option | Effort | Notes |
+|---|---|---|
+| **A. Phone microphone** (the Android app records during the session, timestamped with the synced clock) | Low | Recommended for the demo; it exercises the whole audio pipeline (transcription → structured variables) |
+| B. Raspberry Pi + USB microphone or a USB webcam with mic | Medium | Only if we have the parts; adds a second recorder to synchronize |
+| C. I2S MEMS microphone (INMP441) on an ESP32-S3 | — | The production path; not available today |
+
+**Wi-Fi on the local network instead of BLE for v0.** BLE plus camera together strain the ESP32-CAM's memory, and the Android app would need two transports. The ESP32-CAM keeps a list of **known local networks** (lab, home, and the phone hotspot as a last resort) and joins the strongest one. If none is in range it opens its own access point. Either way:
+
+- The traffic between device and phone **never leaves the local network**. The device doesn't talk to the internet; the phone uploads to the backend only after review.
+- The device can be found at `http://olm-<device_id>.local` (mDNS).
+- Every request needs a **bearer token** shared at pairing time, so other devices on the same network can't read the data.
+- Remaining gap: plain HTTP on the LAN isn't encrypted. HTTPS on the ESP32 is possible but heavy; that's for after the hackathon.
+
+BLE is a stretch goal.
 
 ## 3. Bill of materials
 
 | Part | Qty | Role | Notes |
 |---|---|---|---|
-| ESP32-CAM (AI-Thinker, OV2640) + ESP32-CAM-MB programmer | 1 | camera, SD, Wi-Fi | The MB board is only for flashing/USB serial; in the pendant it's powered via the 5V pin |
+| ESP32-CAM (AI-Thinker, OV2640) + ESP32-CAM-MB programmer | 1 | camera, SD, Wi-Fi | The MB board is only for flashing/USB serial; in the box it's powered via the 5V pin |
 | Arduino Uno | 1 | sensor hub | Powered at its **5V pin** from the buck (bypasses the onboard regulator) |
 | microSD 64 GB | 1 | storage | **Format FAT32** (64 GB cards ship as exFAT; the ESP32 SD library needs FAT32) |
 | DHT11 | 1 | temperature / humidity | ±2 °C, ±5 % RH, ≤1 Hz; keep it away from the MQ heaters and the body |
 | MQ-7 module | 1 | CO (relative) | Used at constant 5 V: **relative readings only** (see §8) |
 | MQ-2 module | 1 | flammable gases / smoke (relative) | ~150 mA heater, 20 s–few min warm-up |
 | KY-037 | 1 | sound level (relative) | Analog output; we compute peak-to-peak over 50 ms windows |
-| RTC module (DS3231 assumed) | 1 | master clock | I²C; keeps time with its coin cell. If it turns out to be a DS1302, see §10 |
-| Buzzer | 1 | local notifications | Active or passive: set `BUZZER_PASSIVE` in firmware |
+| RTC module with CR2032 cell | 1 | master clock | I²C. Most likely DS3231 (ZS-042 board) or DS1307 (Tiny RTC): set `RTC_MODEL` in firmware. Check the chip marking (§10) |
+| Buzzer TMB12A05 | 1 | local notifications | **Active** 5 V buzzer (~30 mA): beeps on DC, `BUZZER_PASSIVE 0` |
 | Push button | 1 | event marker | To GND, internal pull-up |
-| Mini switch | 1 | **privacy switch** | Mounted **on the hub**, between the buck and the cable, so the Uno can sense it. Cuts the pendant's 5 V: camera physically unpowered |
+| Mini switch | 1 | **privacy switch** | Between the 5 V rail and the ESP32-CAM: the camera is physically unpowered. The Uno senses the switched side |
 | LM2596 buck module | 1 | 7.4 V → 5 V | **Set to 5.0–5.1 V with a multimeter before connecting anything** |
-| 2S Li-ion/LiPo 7.4 V battery | 1 | power | Check capacity (mAh) on the label; see §5 |
-| Red LED + 330 Ω | 1 | recording indicator (pendant) | Driven by the Uno, only while ESP32-CAM reports active capture |
+| 2S Li-ion/LiPo 7.4 V battery | 1 | power | Not recharged during the hackathon: start the demo with a full battery and measure runtime early (§5) |
+| Red LED + 330 Ω | 1 | recording indicator (front face) | Driven by the Uno, only while ESP32-CAM reports active capture |
 | Resistors 10 kΩ ×2 | 1 pair | battery divider | 8.4 V max → 4.2 V at A3 |
 | Resistors 1 kΩ + 2 kΩ | 1 pair | UART level shift (Uno 5 V → ESP 3.3 V) | |
 | Resistor 10 kΩ ×2 | 1 pair | privacy-sense divider (5 V → 2.5 V) | Optional; 5 V into a Uno pin is fine, the divider protects if the rail misbehaves |
@@ -79,14 +102,14 @@ The parts list doesn't fit comfortably in one pendant: the Arduino Uno is 68×53
 Battery + ── main switch (optional) ── LM2596 IN+        LM2596 OUT+ (5.0 V) ──┬── Uno 5V pin
 Battery − ─────────────────────────── LM2596 IN−         LM2596 OUT− ──────────┼── common GND
                                                                                 ├── MQ-7, MQ-2, DHT11, KY-037, RTC VCC
-                                                                                └── PRIVACY SWITCH ── pendant 5V (ESP32-CAM 5V)
+                                                                                └── PRIVACY SWITCH ── ESP32-CAM 5V
 Battery + ── 10 kΩ ──┬── 10 kΩ ── GND
                      └── Uno A3   (battery voltage / 2)
 ```
 
 - **All grounds common.** Without a shared GND the UART and the analog readings won't work.
 - Never power the Uno from USB and the buck at the same time while flashing. Unplug the battery first, or disconnect the buck's 5 V from the Uno.
-- The ESP32-CAM browns out with weak supplies (it resets when Wi-Fi starts). Put a **470–1000 µF capacitor** across 5 V/GND at the pendant end of the cable.
+- The ESP32-CAM browns out with weak supplies (it resets when Wi-Fi starts). Put a **470–1000 µF capacitor** across the ESP32-CAM's 5 V/GND pins.
 
 ### 4.2 Arduino Uno pinout
 
@@ -99,9 +122,9 @@ Battery + ── 10 kΩ ──┬── 10 kΩ ── GND
 | A4 / A5 | RTC `SDA` / `SCL` | |
 | D2 | DHT11 `DATA` | 10 kΩ pull-up to 5 V if the module doesn't have one |
 | D3 | event button → GND | `INPUT_PULLUP` |
-| D4 | privacy sense: pendant side of the switch (via 10k/10k divider) | HIGH = pendant powered = privacy **off** |
+| D4 | privacy sense: ESP32-CAM side of the switch (via 10k/10k divider) | HIGH = camera powered = privacy **off** |
 | D5 | buzzer `+` | |
-| D6 | recording LED (pendant) via 330 Ω | ON only while capture heartbeats arrive |
+| D6 | recording LED (front) via 330 Ω | ON only while capture heartbeats arrive |
 | D8 | ESP32-CAM GPIO12 (ESP TX) | SoftwareSerial RX. **No pull-up** (see §4.4) |
 | D9 | 1 kΩ → ESP32-CAM GPIO13, with 2 kΩ from GPIO13 to GND | SoftwareSerial TX, 5 V → 3.3 V divider |
 | D13 | onboard LED | heartbeat |
@@ -175,7 +198,7 @@ Each line is `<payload>*<checksum>\n`, where the checksum is the XOR of all payl
 | `C,BUZZ,<pattern>` | `pattern` ∈ `SHORT`, `DOUBLE`, `LONG` |
 | `C,HELLO` | sent by the ESP32-CAM on boot; the Uno replies with its last `PRIVACY_ON` epoch so the gap can be logged |
 
-**Privacy switch behavior.** While privacy is on, the Uno stops transmitting and holds its TX line LOW, so it doesn't back-power the ESP32-CAM through its RX pin. The switch cuts the pendant's power, so the camera is physically off and nothing is recorded during that time. The Uno timestamps `PRIVACY_ON`/`PRIVACY_OFF` and keeps the last interval in EEPROM. When the ESP32-CAM boots it sends `C,HELLO` and the Uno replays the interval, which gets written to `events.csv`. The backend turns it into a `coverage_interval` with status `privacy_switch`.
+**Privacy switch behavior.** While privacy is on, the Uno stops transmitting and holds its TX line LOW, so it doesn't back-power the ESP32-CAM through its RX pin. The switch cuts the ESP32-CAM's power, so the camera is physically off and nothing is recorded during that time. The Uno timestamps `PRIVACY_ON`/`PRIVACY_OFF` and keeps the last interval in EEPROM. When the ESP32-CAM boots it sends `C,HELLO` and the Uno replays the interval, which gets written to `events.csv`. The backend turns it into a `coverage_interval` with status `privacy_switch`.
 
 ### 7.2 Files on the microSD
 
@@ -203,7 +226,7 @@ Sensor lines and events are only written while a session is active; events outsi
 | DELETE | `/sessions/<id>` | remove a session after a confirmed upload |
 | POST | `/buzz?pattern=<p>` | test or trigger a notification |
 
-Wi-Fi: STA mode against the phone hotspot (credentials in `secrets.h`, not committed). If that connection fails, the device falls back to AP mode `OLM-<device_id>`.
+All endpoints require `Authorization: Bearer <API_TOKEN>`. Wi-Fi: the device joins the strongest of the known networks in `secrets.h` (not committed), or falls back to AP mode `OLM-<device_id>`. It's reachable at `http://olm-<device_id>.local` or its IP (printed on the serial log and shown in `/status`).
 
 ## 8. Measurement caveats (repeat these in the pitch)
 
@@ -225,14 +248,13 @@ Wi-Fi: STA mode against the phone hotspot (credentials in `secrets.h`, not commi
 | 6 | Wi-Fi + HTTP | `/status` reachable from a laptop on the same hotspot |
 | 7 | UART link | `sensors.csv` filling inside the session, `C,REC` heartbeats lighting the LED |
 | 8 | Full system on battery | runs 30 min unattended; measure current and battery drop |
-| 9 | Enclosure | pendant orientation reproducible, cable strain relief, hub ventilated |
+| 9 | Enclosure | camera orientation reproducible, strap stable, MQ section ventilated, switch reachable |
 | 10 | End-to-end | Android downloads a session; worker builds MP4 from `frames.csv` |
 
 ## 10. Open questions
 
-1. **RTC model**: DS3231/DS1307 (I²C, 4 pins) or DS1302 (3-wire: CLK/DAT/RST)? If it's a DS1302, use D10–D12 and the `Ds1302` library.
-2. **Buzzer**: active (beeps on DC) or passive (needs `tone()`)?
-3. **Battery**: exact capacity, and whether it has a protection board (BMS). How do we charge it, with a 2S balance charger?
-4. **Can we get an MPU-6050** (IMU), a small MOSFET (MQ-7 heater cycle / gas sensors off) and a TP4056-like charger?
-5. **Camera lens**: the stock OV2640 has a ~66° FOV. A wide-angle (120–160°) module would show the hands and table while eating much better. Can we get one?
-6. **Pendant mounting**: height on the chest and angle (tilted ~20–30° down to see the plate).
+1. **RTC chip:** read the marking on the large chip, or check the board. A **DS3231** board (ZS-042, blue, 6 pins: 32K, SQW, SCL, SDA, VCC, GND) works with `RTC_MODEL 3231`. A **DS1307** board (Tiny RTC, 2 rows of pins) needs `RTC_MODEL 1307`. If the pins are labeled CLK/DAT/RST, it's a DS1302 (3-wire), which needs code changes.
+2. **Audio proof of concept:** option A (phone mic), B (Pi + USB mic) or skip it for the demo (§2).
+3. **IMU (MPU-6050) and wide-angle camera:** can we get either? The IMU enables wear detection; a wide-angle lens (120–160°) would show the plate and the hands much better than the stock ~66°.
+4. **Battery capacity:** read the mAh on the label, so we know how long the demo can run (§5).
+5. **Mounting:** height on the chest and camera angle (tilted ~20–30° down to see the plate).

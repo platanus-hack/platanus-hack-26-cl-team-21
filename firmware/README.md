@@ -7,7 +7,7 @@
 
 Wiring, the UART protocol, the SD layout and the HTTP API are in [`../hardware/README.md`](../hardware/README.md).
 
-> **Status:** first draft, **not compiled yet**. Expect small fixes on the first build.
+> **Status:** both sketches compile (arduino-cli 1.6, esp32 core 4.0.0, arduino:avr). **Not tested on hardware yet.**
 
 ## Setup (arduino-cli)
 
@@ -38,5 +38,13 @@ arduino-cli monitor -p /dev/cu.usbserial-* -c baudrate=115200
 ## Quick checks
 
 - Hub on USB: one `S,...*HH` line per second; pressing the button prints `E,...,BUTTON`.
-- Camera: the serial log prints its IP, then `curl http://<ip>/status`, `curl -X POST "http://<ip>/capture/start?protocol=eating-v1"`, then `curl http://<ip>/sessions`.
+- Camera: the serial log prints the network and IP. Then:
+  ```bash
+  T="Authorization: Bearer <API_TOKEN>"
+  curl -H "$T" http://olm-<id>.local/status
+  curl -H "$T" -X POST "http://olm-<id>.local/time?epoch=$(date +%s)"
+  curl -H "$T" -X POST "http://olm-<id>.local/capture/start?protocol=eating-v1"
+  curl -H "$T" http://olm-<id>.local/sessions
+  ```
+- Config flags at the top of `sensor-hub.ino`: `RTC_MODEL` (3231 or 1307) and `BUZZER_PASSIVE` (0 for the TMB12A05).
 - `secrets.h` is git-ignored; never commit Wi-Fi credentials.

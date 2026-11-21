@@ -47,18 +47,18 @@ Arduino Uno (sensor hub) --UART--> ESP32-CAM                      web/ (Next.js)
 
 ### Hardware (`hardware/`, `firmware/`)
 
-Full proposal in [`hardware/README.md`](./hardware/README.md); decision record in `docs/decisions/0001-pendant-hardware-architecture.md`.
+Full proposal in [`hardware/README.md`](./hardware/README.md); decision record in `docs/decisions/0001-prototype-hardware-architecture.md`.
 
-- **Split device:** a camera pendant (ESP32-CAM) and a body-worn hub (Arduino Uno + sensors + 2S battery + LM2596 → 5 V), joined by a 5-wire cable.
+- **Single chest-worn box (prototype):** size and power only constrain the prototype; production would be a custom pendant. Inside: ESP32-CAM (camera) + Arduino Uno (sensor hub) + 2S battery + LM2596 → 5 V.
 - **The Uno is the sensor hub and master clock:** DHT11, MQ-7, MQ-2, KY-037, RTC, buzzer, event button, privacy switch, battery voltage. It sends checksummed ASCII lines to the ESP32-CAM over UART.
-- **The ESP32-CAM** saves JPEG frames (2 fps, VGA) plus `frames.csv`, `sensors.csv`, `events.csv` and `session.json` per session on the microSD, and exposes an **HTTP API over Wi-Fi** (phone hotspot).
-- **No audio recording**, only relative sound level. **No BLE in v0.**
+- **The ESP32-CAM** saves JPEG frames (2 fps, VGA) plus `frames.csv`, `sensors.csv`, `events.csv` and `session.json` per session on the microSD. It exposes a token-protected **HTTP API on the local network**: it joins the strongest known Wi-Fi (lab, home, phone hotspot), falls back to its own AP, and is reachable at `olm-<id>.local`. **No BLE in v0.**
+- **No audio recording on the device** (the KY-037 only gives a relative level). An audio proof of concept, if any, uses the phone's microphone (see `hardware/README.md` §2).
 - **The privacy switch physically cuts the pendant's power**, and the hub logs the interval.
 - Open risks: GPIO12 strapping on the ESP32-CAM, brownouts when Wi-Fi starts, no IMU (no wear detection), MQ heaters dominating the power budget.
 
 ### Android (`android/`)
 
-Kotlin. Talks to the pendant over its HTTP API on the phone hotspot (BLE is a stretch goal). It shows device status (battery, storage, recording, sensors), syncs the clock, starts and stops sessions, downloads them, lets the participant review, trim or exclude, then uploads only approved material plus the excluded intervals.
+Kotlin. Talks to the device over its HTTP API on the local network, with a bearer token shared at pairing time (BLE is a stretch goal). It shows device status (battery, storage, recording, sensors), syncs the clock, starts and stops sessions, downloads them, lets the participant review, trim or exclude, then uploads only approved material plus the excluded intervals.
 
 ### Backend stack (npm workspaces, Node 24, TypeScript)
 
