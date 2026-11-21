@@ -9,7 +9,7 @@ val Navy = Color(0xFF192859)
 val Blue = Color(0xFF28469E)
 val Orange = Color(0xFFF27533)
 val Amber = Color(0xFFF6A321) // warnings; fill only, always with Ink text on top
-val Paper = Color(0xFFF3EFE6)
+val Paper = Color(0xFFF2E7E1)
 val Ink = Color(0xFF1A1A1A)
 
 val LightColors = lightColorScheme(
@@ -29,15 +29,19 @@ val LightColors = lightColorScheme(
     onBackground = Ink,
     surface = Paper,
     onSurface = Ink,
-    surfaceVariant = Color(0xFFE4DFD2),
+    surfaceVariant = Color(0xFFE3D7CD),
     onSurfaceVariant = Color(0xFF45423C),
-    surfaceContainerLowest = Color(0xFFF8F5EE),
-    surfaceContainerLow = Color(0xFFF0ECE2),
-    surfaceContainer = Color(0xFFECE7DC),
-    surfaceContainerHigh = Color(0xFFE8E3D8),
-    surfaceContainerHighest = Color(0xFFE4DFD2),
+    surfaceContainerLowest = Color(0xFFF7EDE9),
+    surfaceContainerLow = Color(0xFFEFE4DD),
+    surfaceContainer = Color(0xFFEBDFD7),
+    surfaceContainerHigh = Color(0xFFE7DBD3),
+    surfaceContainerHighest = Color(0xFFE3D7CD),
     outline = Color(0xFF6E6A62),
-    outlineVariant = Color(0xFFB9B3A6),
+    outlineVariant = Color(0xFFB8ABA1),
+    // Snackbars: ink bar, paper text, light-blue action (the default inverse colors are purple).
+    inverseSurface = Ink,
+    inverseOnSurface = Paper,
+    inversePrimary = Color(0xFFBFCBF2),
 )
 
 val DarkColors = darkColorScheme(
@@ -66,4 +70,7 @@ val DarkColors = darkColorScheme(
     surfaceContainerHighest = Color(0xFF222C5C),
     outline = Color(0xFF8E93AD),
     outlineVariant = Color(0xFF3A4470),
+    inverseSurface = Paper,
+    inverseOnSurface = Ink,
+    inversePrimary = Blue,
 )

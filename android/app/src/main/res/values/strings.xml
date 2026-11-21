@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Observatorio</string>
+    <string name="app_name">Rigo</string>
 
     <string name="back">Volver</string>
     <string name="next">Continuar</string>
@@ -8,7 +8,7 @@
     <!-- Onboarding: welcome -->
     <string name="welcome_title_before">Ciencia que observa,\u0020</string>
     <string name="welcome_title_highlight">con tu permiso</string>
-    <string name="welcome_subtitle">Un observatorio de tu día a día</string>
+    <string name="welcome_tag">Observatorio longitudinal</string>
     <string name="welcome_body">Un colgante registra video y datos del ambiente según el protocolo del estudio. Tú revisas todo antes de que salga de tu teléfono.</string>
     <string name="welcome_start">Comenzar</string>
     <string name="welcome_voluntary">Participación voluntaria. Puedes retirarte cuando quieras.</string>
@@ -86,9 +86,25 @@
     <string name="device_server_ok">Conectado</string>
     <string name="device_server_error">Sin conexión</string>
 
+    <!-- Study -->
+    <string name="study_section">Estudio</string>
+    <string name="study_participant">Participante %1$s</string>
+    <string name="leave_study">Salir del estudio</string>
+    <string name="leave_study_title">¿Salir del estudio?</string>
+    <string name="leave_study_body">Dejarás de participar y este teléfono olvidará tus códigos. Para volver, necesitarás los códigos del equipo de investigación.</string>
+    <string name="leave_study_confirm">Salir</string>
+
     <!-- Review -->
-    <string name="review_summary_before">Clips por revisar:\u0020</string>
-    <string name="review_summary_count">%1$d de %2$d</string>
+    <plurals name="review_pending">
+        <item quantity="one">%1$d clip por revisar</item>
+        <item quantity="other">%1$d clips por revisar</item>
+    </plurals>
+    <string name="review_all_done">Todo revisado</string>
+    <string name="review_empty">Aún no hay clips por revisar.</string>
+    <plurals name="review_clip_excluded">
+        <item quantity="one">%1$d tramo excluido</item>
+        <item quantity="other">%1$d tramos excluidos</item>
+    </plurals>
     <string name="review_privacy_note">Nada sale de tu teléfono hasta que lo apruebes. De lo que excluyas solo se envía el horario, nunca el contenido.</string>
     <string name="review_loading">Buscando sesiones en el colgante…</string>
     <string name="review_pendant_unreachable">No encontramos el colgante. Se muestran los clips ya descargados.</string>
@@ -106,5 +122,21 @@
     <string name="clip_excluded_ranges">Tramos excluidos</string>
     <string name="clip_remove_range">Quitar tramo %1$s</string>
     <string name="clip_exclude_all">Excluir clip completo</string>
+    <string name="clip_excluded_hatch_hint">Lo rayado ya está excluido.</string>
+    <string name="clip_all_excluded">Todo el clip está excluido.</string>
+    <string name="clip_shared_summary">Se compartirán %1$s de %2$s</string>
+    <string name="clip_range_restored_msg">Tramo restaurado</string>
+    <string name="clip_exclude_all_title">¿Excluir el clip completo?</string>
+    <string name="clip_exclude_all_body">No se compartirá nada de este clip. Solo se enviará su horario, nunca el contenido.</string>
+    <string name="clip_exclude_all_confirm">Excluir</string>
+    <string name="clip_state_approved">Aprobado.</string>
+    <string name="clip_shared_whole">Se compartirá completo.</string>
+    <string name="clip_state_excluded">Este clip está excluido. Solo se enviará su horario, nunca el contenido.</string>
+    <string name="clip_back_to_pending">Volver a pendiente</string>
+    <string name="clip_include_again">Volver a incluir</string>
+    <string name="clip_approved_msg">Clip aprobado</string>
+    <string name="clip_excluded_msg">Clip excluido</string>
+    <string name="undo">Deshacer</string>
+    <string name="cancel">Cancelar</string>
     <string name="clip_approve">Aprobar</string>
 </resources>
