@@ -27,7 +27,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,25 +43,52 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import cl.observatorio.participante.BuildConfig
 import cl.observatorio.participante.R
-import cl.observatorio.participante.pendant.DeviceStatus
-import cl.observatorio.participante.pendant.FakePendant
+import cl.observatorio.participante.pendant.BATTERY_LOW_MV
+import cl.observatorio.participante.pendant.PendantApi
+import cl.observatorio.participante.pendant.PendantStatus
+import cl.observatorio.participante.pendant.SensorReading
+import cl.observatorio.participante.pendant.batteryPercentEstimate
+import cl.observatorio.participante.pendant.parseSensorLine
 import cl.observatorio.participante.ui.theme.Amber
 import cl.observatorio.participante.ui.theme.Ink
 import cl.observatorio.participante.ui.theme.ObservatorioTheme
 import cl.observatorio.participante.ui.theme.TabularNumbers
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import org.json.JSONException
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
 import java.util.Locale
+
+private sealed interface PendantState {
+    data object Searching : PendantState
+    data object NotFound : PendantState
+    data class Found(val status: PendantStatus, val receivedAt: Instant) : PendantState
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeviceScreen() {
-    val status by remember { FakePendant.status() }.collectAsState(initial = null)
+fun DeviceScreen(pendant: PendantApi) {
+    var state by remember { mutableStateOf<PendantState>(PendantState.Searching) }
+    LaunchedEffect(pendant) {
+        while (true) {
+            state = try {
+                PendantState.Found(pendant.status(), Instant.now())
+            } catch (e: IOException) {
+                PendantState.NotFound
+            } catch (e: JSONException) {
+                PendantState.NotFound
+            }
+            delay(STATUS_POLL_MS)
+        }
+    }
     var serverOk by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(Unit) { serverOk = checkHealth() }
 
@@ -78,7 +104,14 @@ fun DeviceScreen() {
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 24.dp),
         ) {
-            status?.let { DeviceContent(it) }
+            when (val current = state) {
+                PendantState.Searching -> PendantMessage(stringResource(R.string.device_searching), null)
+                PendantState.NotFound -> PendantMessage(
+                    stringResource(R.string.device_not_found),
+                    stringResource(R.string.device_not_found_body),
+                )
+                is PendantState.Found -> DeviceContent(current.status, current.receivedAt)
+            }
             SectionTitle(stringResource(R.string.device_server))
             ListItem(
                 headlineContent = {
@@ -100,19 +133,37 @@ fun DeviceScreen() {
 }
 
 @Composable
-private fun DeviceContent(s: DeviceStatus) {
-    // Header: the screen's one "anatomía" detail.
+private fun PendantFrame(content: @Composable () -> Unit) {
     Column(
         Modifier
             .padding(horizontal = 32.dp, vertical = 20.dp)
             .fillMaxWidth()
             .cornerTicks(MaterialTheme.colorScheme.outline)
             .padding(16.dp),
-    ) {
-        Text(s.deviceId, style = MaterialTheme.typography.headlineSmall)
+    ) { content() }
+}
+
+@Composable
+private fun PendantMessage(title: String, body: String?) {
+    PendantFrame {
+        Text(title, style = MaterialTheme.typography.headlineSmall)
+        if (body != null) {
+            Text(
+                body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DeviceContent(s: PendantStatus, receivedAt: Instant) {
+    PendantFrame {
+        Text(stringResource(R.string.device_name, s.deviceId), style = MaterialTheme.typography.headlineSmall)
         Text(
-            if (s.connected) stringResource(R.string.device_connected, s.firmwareVersion)
-            else stringResource(R.string.device_disconnected),
+            stringResource(R.string.device_connected, s.firmwareVersion),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -122,61 +173,96 @@ private fun DeviceContent(s: DeviceStatus) {
                 Modifier
                     .size(10.dp)
                     .background(
-                        if (s.recording && !s.privacySwitchOn) MaterialTheme.colorScheme.tertiary
-                        else MaterialTheme.colorScheme.outline,
+                        if (s.capturing) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline,
                         CircleShape,
                     ),
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                stringResource(if (s.privacySwitchOn) R.string.device_privacy else R.string.device_recording),
+                stringResource(if (s.capturing) R.string.device_recording else R.string.device_not_recording),
                 style = MaterialTheme.typography.titleMedium,
             )
         }
     }
 
+    val reading = parseSensorLine(s.lastSensorLine)
     SectionTitle(stringResource(R.string.device_status))
-    MeterItem(
-        label = stringResource(R.string.device_battery),
-        value = stringResource(if (s.charging) R.string.device_charging else R.string.device_percent, s.batteryPct),
-        fraction = s.batteryPct / 100f,
-        warning = if (s.batteryPct < 20 && !s.charging) stringResource(R.string.device_battery_low) else null,
-    )
-    MeterItem(
+    BatteryItem(if (reading == null) null else s.batteryMv)
+    StatusItem(
         label = stringResource(R.string.device_storage),
-        value = stringResource(R.string.device_storage_used, s.storageUsedPct),
-        fraction = s.storageUsedPct / 100f,
+        value = stringResource(R.string.device_storage_free, numberFormat.format(s.sdFreeMb)),
+    )
+    StatusItem(
+        label = stringResource(R.string.device_clock),
+        value = stringResource(if (s.clockOk) R.string.device_clock_synced else R.string.device_clock_not_synced),
     )
 
     SectionTitle(stringResource(R.string.device_sensors))
-    val raw = stringResource(R.string.sensor_raw_unit)
-    val readings = listOf(
-        Triple(stringResource(R.string.sensor_temperature), "%.1f".format(Locale("es", "CL"), s.temperatureC), "°C"),
-        Triple(stringResource(R.string.sensor_humidity), "${s.humidityPct}", "%"),
-        Triple(stringResource(R.string.sensor_sound), "${s.soundRaw}", raw),
-        Triple(stringResource(R.string.sensor_co), "${s.coRaw}", raw),
-        Triple(stringResource(R.string.sensor_gas), "${s.gasRaw}", raw),
-    )
     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        // One column when the user has a large font size, so labels and values never collide.
-        val columns = if (LocalDensity.current.fontScale > 1.3f) 1 else 2
-        readings.chunked(columns).forEach { row ->
-            Row {
-                row.forEach { (label, value, unit) -> Specimen(label, value, unit, Modifier.weight(1f)) }
-                if (row.size < columns) Spacer(Modifier.weight(1f))
-            }
+        if (reading == null) {
+            Text(stringResource(R.string.sensor_no_reading_yet), style = MaterialTheme.typography.bodyLarge)
+        } else {
+            SensorReadings(reading)
         }
         Text(
-            stringResource(R.string.sensor_relative_note),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            stringResource(R.string.device_updated, timeFormat.format(s.updatedAt)),
+            stringResource(R.string.device_updated, timeFormat.format(receivedAt)),
             style = MaterialTheme.typography.bodyMedium.merge(TabularNumbers),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+@Composable
+private fun BatteryItem(batteryMv: Int?) {
+    val label = stringResource(R.string.device_battery)
+    val percent = batteryMv?.let { batteryPercentEstimate(it) }
+    when {
+        batteryMv == null -> StatusItem(label, stringResource(R.string.device_no_reading_yet))
+        percent == null -> StatusItem(label, stringResource(R.string.device_external_power))
+        else -> MeterItem(
+            label = label,
+            value = stringResource(R.string.device_battery_estimate, percent, voltsFormat.format(batteryMv / 1000.0)),
+            fraction = percent / 100f,
+            warning = if (batteryMv < BATTERY_LOW_MV) stringResource(R.string.device_battery_low) else null,
+        )
+    }
+}
+
+@Composable
+private fun SensorReadings(reading: SensorReading) {
+    val raw = stringResource(R.string.sensor_raw_unit)
+    val missing = stringResource(R.string.sensor_missing)
+    val readings = listOf(
+        Triple(stringResource(R.string.sensor_temperature), reading.temperatureC?.let { decimalFormat.format(it) }, "°C"),
+        Triple(stringResource(R.string.sensor_humidity), reading.humidityPct?.let { numberFormat.format(it) }, "%"),
+        Triple(stringResource(R.string.sensor_sound), "${reading.soundP2pRaw}", raw),
+        Triple(stringResource(R.string.sensor_co), "${reading.mq7Raw}", raw),
+        Triple(stringResource(R.string.sensor_gas), "${reading.mq2Raw}", raw),
+    )
+    // One column when the user has a large font size, so labels and values never collide.
+    val columns = if (LocalDensity.current.fontScale > 1.3f) 1 else 2
+    readings.chunked(columns).forEach { row ->
+        Row {
+            row.forEach { (label, value, unit) ->
+                Specimen(label, value ?: "—", unit, Modifier.weight(1f), note = if (value == null) missing else null)
+            }
+            if (row.size < columns) Spacer(Modifier.weight(1f))
+        }
+    }
+    Text(
+        stringResource(R.string.sensor_relative_note),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun StatusItem(label: String, value: String) {
+    ListItem(
+        headlineContent = { Text(label) },
+        supportingContent = { Text(value, style = MaterialTheme.typography.bodyLarge.merge(TabularNumbers)) },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+    )
 }
 
 @Composable
@@ -213,7 +299,12 @@ fun SectionTitle(text: String, inset: Dp = 16.dp) {
     )
 }
 
+private const val STATUS_POLL_MS = 2_000L
+private val chileanSpanish = Locale("es", "CL")
 private val timeFormat = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
+private val numberFormat = DecimalFormat("#,##0", DecimalFormatSymbols(chileanSpanish))
+private val decimalFormat = DecimalFormat("0.0", DecimalFormatSymbols(chileanSpanish))
+private val voltsFormat = DecimalFormat("0.00", DecimalFormatSymbols(chileanSpanish))
 
 private suspend fun checkHealth(): Boolean = withContext(Dispatchers.IO) {
     try {
@@ -236,12 +327,23 @@ private fun DeviceContentPreview() {
     ObservatorioTheme {
         Column {
             DeviceContent(
-                DeviceStatus(
-                    "pendant-01", "0.1.0", connected = true, recording = true, privacySwitchOn = false,
-                    batteryPct = 14, charging = false, storageUsedPct = 34, temperatureC = 23.4, humidityPct = 47,
-                    soundRaw = 512, coRaw = 212, gasRaw = 305, updatedAt = Instant.now(),
+                PendantStatus(
+                    deviceId = "3c71bf", firmwareVersion = "cam-0.1.0", cameraOk = true, sdOk = true, sdFreeMb = 14_820,
+                    capturing = true, sessionId = "3c71bf-1795280400", frames = 2400, clockOk = true,
+                    epochMs = 1_795_281_600_000, batteryMv = 6950, ip = "192.168.1.47", pendingCommands = 0,
+                    droppedCommands = 0, lastAck = "A,HELLO,OK", lastSensorLine = "S,1795281600,12000000,,,212,305,512,6950",
+                    linkBadChecksums = 0,
                 ),
+                Instant.now(),
             )
         }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun PendantNotFoundPreview() {
+    ObservatorioTheme {
+        PendantMessage(stringResource(R.string.device_not_found), stringResource(R.string.device_not_found_body))
     }
 }

@@ -47,10 +47,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import cl.observatorio.participante.R
-import cl.observatorio.participante.pendant.Clip
-import cl.observatorio.participante.pendant.ClipStatus
-import cl.observatorio.participante.pendant.FakePendant
-import cl.observatorio.participante.pendant.Interval
+import cl.observatorio.participante.review.Clip
+import cl.observatorio.participante.review.ClipStatus
+import cl.observatorio.participante.review.Interval
 import cl.observatorio.participante.ui.theme.Amber
 import cl.observatorio.participante.ui.theme.Ink
 import cl.observatorio.participante.ui.theme.ObservatorioTheme
@@ -61,7 +60,7 @@ import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReviewScreen(clips: List<Clip>, onOpen: (Clip) -> Unit) {
+fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolean, onOpen: (Clip) -> Unit) {
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
@@ -85,6 +84,20 @@ fun ReviewScreen(clips: List<Clip>, onOpen: (Clip) -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 12.dp),
                     )
+                    if (loading && clips.isEmpty()) {
+                        Text(
+                            stringResource(R.string.review_loading),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
+                    if (pendantUnreachable) {
+                        Text(
+                            stringResource(R.string.review_pendant_unreachable),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
@@ -106,7 +119,7 @@ fun ReviewScreen(clips: List<Clip>, onOpen: (Clip) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ClipDetailScreen(clip: Clip, onBack: () -> Unit) {
+fun ClipDetailScreen(clip: Clip, onChange: ((Clip) -> Clip) -> Unit, onBack: () -> Unit) {
     var range by remember(clip.id) { mutableStateOf(0f..clip.durationSeconds / 4f) }
     Scaffold(
         topBar = {
@@ -127,11 +140,11 @@ fun ClipDetailScreen(clip: Clip, onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 MainActionButton(stringResource(R.string.clip_approve), onClick = {
-                    FakePendant.update(clip.id) { it.copy(status = ClipStatus.APPROVED) }
+                    onChange { it.copy(status = ClipStatus.APPROVED) }
                     onBack()
                 })
                 SecondaryActionButton(stringResource(R.string.clip_exclude_all), onClick = {
-                    FakePendant.update(clip.id) {
+                    onChange {
                         it.copy(status = ClipStatus.EXCLUDED, excluded = listOf(Interval(0, it.durationSeconds)))
                     }
                     onBack()
@@ -144,7 +157,7 @@ fun ClipDetailScreen(clip: Clip, onBack: () -> Unit) {
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
-            // shortcut: no video yet, the fake pendant has no media. Swap for a platform video player with real clips.
+            // shortcut: no playback yet (milestone 3). Swap for a player over the session frames from PendantApi.frame.
             Box(
                 Modifier
                     .padding(16.dp)
@@ -180,7 +193,7 @@ fun ClipDetailScreen(clip: Clip, onBack: () -> Unit) {
                         stringResource(R.string.clip_exclude_range),
                         onClick = {
                             val interval = Interval(range.start.toInt(), range.endInclusive.toInt())
-                            FakePendant.update(clip.id) { if (interval in it.excluded) it else it.copy(excluded = it.excluded + interval) }
+                            onChange { if (interval in it.excluded) it else it.copy(excluded = it.excluded + interval) }
                         },
                         enabled = range.endInclusive.toInt() > range.start.toInt(),
                     )
@@ -194,7 +207,7 @@ fun ClipDetailScreen(clip: Clip, onBack: () -> Unit) {
                     ListItem(
                         headlineContent = { Text(label, style = MaterialTheme.typography.bodyLarge.merge(TabularNumbers)) },
                         trailingContent = {
-                            IconButton(onClick = { FakePendant.update(clip.id) { it.copy(excluded = it.excluded - interval) } }) {
+                            IconButton(onClick = { onChange { it.copy(excluded = it.excluded - interval) } }) {
                                 Icon(Icons.Outlined.Delete, stringResource(R.string.clip_remove_range, label))
                             }
                         },
@@ -237,8 +250,11 @@ fun StatusLabel(text: String, container: Color, content: Color, outlined: Boolea
 
 private val hourFormat = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
 
-private fun clipRange(clip: Clip) =
-    "${hourFormat.format(clip.startedAt)} – ${hourFormat.format(clip.startedAt.plusSeconds(clip.durationSeconds.toLong()))}"
+@Composable
+private fun clipRange(clip: Clip): String {
+    val start = clip.startedAt ?: return stringResource(R.string.review_clip_no_clock)
+    return "${hourFormat.format(start)} – ${hourFormat.format(start.plusSeconds(clip.durationSeconds.toLong()))}"
+}
 
 internal fun mmss(seconds: Int) = "%02d:%02d".format(seconds / 60, seconds % 60)
 
@@ -253,6 +269,8 @@ private fun ReviewScreenPreview() {
                 Clip("clip-072", now.plusSeconds(900), 540, ClipStatus.APPROVED),
                 Clip("clip-073", now.plusSeconds(2400), 180, ClipStatus.EXCLUDED),
             ),
+            loading = false,
+            pendantUnreachable = false,
             onOpen = {},
         )
     }
