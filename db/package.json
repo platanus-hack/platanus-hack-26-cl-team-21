@@ -6,7 +6,8 @@
   "scripts": {
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
-    "test": "node tests/run.mjs"
+    "test": "node tests/run.mjs",
+    "seed": "tsx --env-file-if-exists=../.env src/seed.ts"
   },
   "dependencies": {
     "drizzle-kit": "^0.31.11",
@@ -14,6 +15,7 @@
     "pg": "^8.23.1"
   },
   "devDependencies": {
-    "@types/pg": "^8.23.1"
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15"
   }
 }

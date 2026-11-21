@@ -23,6 +23,7 @@ Prefer Docker? `docker compose up -d` and use the alternative URL in `.env.examp
 cp .env.example .env
 npm install
 npm run db:migrate
+npm run db:seed                # optional: demo eating study (idempotent, safe to re-run)
 npm run dev:web               # http://localhost:3000/api/health
 npm run dev:worker
 curl -X POST localhost:3000/api/jobs   # the worker prints "hello from worker"
