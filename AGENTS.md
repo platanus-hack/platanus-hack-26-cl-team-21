@@ -59,6 +59,8 @@ Arduino Uno (sensor hub) --UART--> ESP32-CAM                      web/ (Next.js)
 
 Kotlin. Pairs over BLE, shows device status (battery, storage, recording, sensors), receives the protocol schedule, pulls media over Wi-Fi, lets the participant review, trim or exclude, then uploads only approved material plus the excluded intervals.
 
+**Top priorities: it must look native and be fast.** Use Jetpack Compose with stock Material 3 components, edge-to-edge and predictive back. The brand is applied only through the theme (see [`android/design/GUIDELINES.md`](./android/design/GUIDELINES.md)). No custom-drawn widgets and no heavy UI or animation libraries. UI text is Spanish only. Keep BLE, network and file I/O off the main thread. Add dependencies only when the platform can't do the job.
+
 ### Backend stack (npm workspaces, Node 24, TypeScript)
 
 Local setup, commands and gotchas are in [`DEVELOPMENT.md`](./DEVELOPMENT.md).
