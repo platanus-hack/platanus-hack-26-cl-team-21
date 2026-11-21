@@ -5,7 +5,8 @@
   "main": "src/index.ts",
   "scripts": {
     "generate": "drizzle-kit generate",
-    "migrate": "drizzle-kit migrate"
+    "migrate": "drizzle-kit migrate",
+    "test": "node tests/run.mjs"
   },
   "dependencies": {
     "drizzle-kit": "^0.31.11",
