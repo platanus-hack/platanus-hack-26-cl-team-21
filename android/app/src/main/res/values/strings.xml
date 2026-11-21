@@ -100,6 +100,7 @@
         <item quantity="other">%1$d clips por revisar</item>
     </plurals>
     <string name="review_all_done">Todo revisado</string>
+    <string name="review_empty">Aún no hay clips por revisar.</string>
     <plurals name="review_clip_excluded">
         <item quantity="one">%1$d tramo excluido</item>
         <item quantity="other">%1$d tramos excluidos</item>

@@ -118,6 +118,12 @@ fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolea
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(top = 12.dp),
                         )
+                    } else if (!loading && clips.isEmpty()) {
+                        Text(
+                            stringResource(R.string.review_empty),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
                     }
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

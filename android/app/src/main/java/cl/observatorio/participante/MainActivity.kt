@@ -140,7 +140,8 @@ private fun App(prefs: SharedPreferences) {
                     participantId = prefs.getString("participant_id", "").orEmpty(),
                     onLeaveStudy = {
                         // shortcut: only forgets the study on this phone. Telling the backend and handling
-                        // already-uploaded data needs the study's withdrawal policy.
+                        // already-uploaded data needs the study's withdrawal policy, and before real hardware the
+                        // pendant's sessions must be tied to (or wiped for) a participant, or the next one reviews them.
                         prefs.edit().clear().apply()
                         reviewQueue.clips.clear()
                         tab = 0
