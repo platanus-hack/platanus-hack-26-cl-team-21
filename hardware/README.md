@@ -194,7 +194,7 @@ The Uno reports battery voltage on A3 every second. Thresholds scale with `BATT_
 ## 6. Clock and synchronization
 
 - The **RTC on the Uno is the master clock.** Every sensor line carries `rtc_epoch` (seconds) and `uptime_ms`.
-- The ESP32-CAM maps the Uno's RTC time onto its own `millis()`. Each line's epoch is whole seconds read slightly before sending, so every sample is a lower bound of the true offset: the firmware keeps the **maximum over a sliding 10-minute window** (two buckets, so slow drift is tracked), and resets the estimate on jumps of more than 2 s (first fix, `RTC_SET`). Expected accuracy is **~0.1–0.2 s**. Each frame is stamped with `rtc_epoch_ms`.
+- The ESP32-CAM maps the Uno's RTC time onto its own `millis()`. Each line's epoch is whole seconds read slightly before sending, so every sample is a lower bound of the true offset: the firmware keeps the **maximum over a sliding 10-minute window** (two buckets, so slow drift is tracked), and resets the estimate on every `RTC_SET` and on jumps of more than 2 s (first fix). Expected accuracy is **~0.1–0.2 s**. Each frame is stamped with `rtc_epoch_ms`.
 - **Time sync:** the Android app calls `POST /time` on the ESP32-CAM, which queues `C,TIME,<epoch>` for the Uno. The Uno sets the RTC and emits an `E,RTC_SET,<old_epoch>` event, so the backend knows the drift. The DS1302 boots with an invalid date: until the first sync, epochs are empty/0 and frames only carry uptime.
 - All device times are **UTC epoch**. Time zones are applied in the backend.
 
@@ -236,7 +236,7 @@ Each line is `<payload>*<checksum>\n`, where the checksum is the XOR of all payl
   events.csv                     rtc_epoch,uptime_ms,type,value
 ```
 
-Sensor lines and events are only written while a session is active; events outside a session go to `/events-idle.csv`. The active session id is persisted in `/current_session`: after any reset (privacy switch, brownout) the camera resumes that session, continues the frame numbering and logs a `CAM_BOOT,resumed` event once the clock is known. `/capture/stop` closes it. If two sessions would get the same id, a `-2`, `-3`… suffix is added. The worker should derive frame counts and end times from `frames.csv` rather than `session.json`, which is only rewritten at start and stop. These files map to the contracts in `AGENTS.md` §5 (`sensor_sample`, `device_event`, `coverage_interval`). The Android app or the worker converts them; the device keeps a flat CSV format so it stays simple and robust.
+Sensor lines and events are only written while a session is active; events outside a session go to `/events-idle.csv`. The active session id is persisted in `/current_session`. If only the camera lost power (privacy switch, brownout: the hub's uptime is well ahead of the camera's), the camera resumes that session, continues the frame numbering and logs a `CAM_BOOT,resumed` event once the clock is known. If the whole box was off (both boards just booted), the old session is closed instead, so recording never restarts without an explicit `/capture/start`. `/capture/stop` closes it. If two sessions would get the same id, a `-2`, `-3`… suffix is added. The worker should derive frame counts and end times from `frames.csv` rather than `session.json`, which is only rewritten at start and stop. These files map to the contracts in `AGENTS.md` §5 (`sensor_sample`, `device_event`, `coverage_interval`). The Android app or the worker converts them; the device keeps a flat CSV format so it stays simple and robust.
 
 ### 7.3 HTTP API (ESP32-CAM, for the Android app)
 

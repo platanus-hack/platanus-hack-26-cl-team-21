@@ -63,6 +63,7 @@ unsigned long clockWindowStartMs = 0;
 const unsigned long CLOCK_WINDOW_MS = 10UL * 60UL * 1000UL;
 const int64_t CLOCK_RESET_MS = 2000;
 bool bootEventPending = false;  // CAM_BOOT is logged once the clock is known
+bool resumePending = false;     // an unclosed session was found at boot; decided on the first hub line
 String lastSensorLine;
 long lastBattMv = -1;
 uint32_t badChecksums = 0;
@@ -85,6 +86,7 @@ size_t rxLen = 0;
 // ---------- Helpers ----------
 void sendJson(int code, const String &body);
 void stopSession();
+void decideResume(unsigned long hubUptimeMs);
 uint64_t nowEpochMs() { return clockOk ? (uint64_t)((int64_t)millis() + epochOffsetMs) : 0; }
 
 uint8_t checksum(const char *s) {
@@ -207,7 +209,9 @@ void handleHubLine(char *raw) {
     return;
   }
   if (type == 'S' || type == 'E') {
+    if (resumePending) decideResume(strtoul(field(line, 2).c_str(), nullptr, 10));
     uint32_t epoch = strtoul(field(line, 1).c_str(), nullptr, 10);
+    if (type == 'E' && field(line, 3) == "RTC_SET") clockOk = false;  // force a clock reset after a sync
     if (epoch > 1700000000UL) updateClock(epoch);
     if (bootEventPending && clockOk && capturing) {
       char row[64];
@@ -254,6 +258,7 @@ void pollLink() {
 bool startSession(const String &protocol) {
   if (!sdOk || !camOk) return false;
   if (capturing) return true;
+  if (resumePending) decideResume(0);  // no hub line yet: treat as a fresh boot and close the old session
   sessionStartEpochMs = nowEpochMs();
   String baseId = deviceId + "-" + String((unsigned long)(sessionStartEpochMs / 1000));
   if (!clockOk) baseId += "-noclock-" + String(millis());
@@ -314,9 +319,23 @@ void resumeSession() {
     frames.close();
     if (frameSeq > 0) frameSeq--;  // header line
   }
-  capturing = true;
-  bootEventPending = true;
-  Serial.printf("resumed session %s at frame %u\n", sessionId.c_str(), frameSeq);
+  resumePending = true;  // capture restarts only if decideResume() confirms a camera-only restart
+}
+
+// If the hub has been up much longer than the camera, only the camera lost power (privacy switch,
+// brownout): continue the session. If both just booted, the whole box was off (end of day, unplugged):
+// close the session instead of silently recording into it.
+void decideResume(unsigned long hubUptimeMs) {
+  resumePending = false;
+  if (hubUptimeMs > millis() + 5000UL) {
+    capturing = true;
+    bootEventPending = true;
+    Serial.printf("resumed session %s at frame %u\n", sessionId.c_str(), frameSeq);
+  } else {
+    writeSessionJson(true);  // the worker derives the real end from frames.csv
+    SD_MMC.remove(CURRENT_SESSION_PATH);
+    Serial.printf("closed interrupted session %s (whole device was off)\n", sessionId.c_str());
+  }
 }
 
 void captureFrame() {
