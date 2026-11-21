@@ -9,7 +9,7 @@ import { getStudyOverview, type StudyOverview } from "@/lib/queries/studies";
 
 export default function StudyOverviewPage({ params }: PageProps<"/studies/[code]">) {
   return (
-    <Suspense fallback={<p className="text-sm text-neutral-500">Cargando resumen…</p>}>
+    <Suspense fallback={<p className="text-sm text-ink-muted">Cargando resumen…</p>}>
       <Overview params={params} />
     </Suspense>
   );
@@ -24,18 +24,18 @@ async function Overview({ params }: { params: PageProps<"/studies/[code]">["para
 
   return (
     <div className="flex flex-col gap-8">
-      {study.description && <p className="max-w-3xl text-sm text-neutral-600 dark:text-neutral-400">{study.description}</p>}
+      {study.description && <p className="max-w-3xl text-sm text-ink-muted">{study.description}</p>}
 
       <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-semibold">Protocolo en uso</h2>
+        <h2 className="font-serif text-lg font-medium">Protocolo en uso</h2>
         {study.protocolsInUse.length === 0 ? (
-          <p className="text-sm text-neutral-500">Ningún participante tiene un protocolo asignado actualmente.</p>
+          <p className="text-sm text-ink-muted">Ningún participante tiene un protocolo asignado actualmente.</p>
         ) : (
           <ul className="flex flex-col gap-1 text-sm">
             {study.protocolsInUse.map((protocol) => (
               <li key={protocol.versionLabel}>
                 <span className="font-mono font-medium">{protocol.versionLabel}</span>
-                <span className="text-neutral-500">
+                <span className="text-ink-muted">
                   {" · "}
                   {protocol.status === "published"
                     ? protocol.publishedAt && `Publicado el ${formatDate(protocol.publishedAt)}`
@@ -54,13 +54,13 @@ async function Overview({ params }: { params: PageProps<"/studies/[code]">["para
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-lg font-semibold">Participantes</h2>
+          <h2 className="font-serif text-lg font-medium">Participantes</h2>
           <Link href={`${base}/observations`} className="text-sm underline underline-offset-2">
             Ver todas las observaciones
           </Link>
         </div>
         <ParticipantsTable study={study} base={base} />
-        <p className="max-w-3xl text-xs text-neutral-500">
+        <p className="max-w-3xl text-xs text-ink-muted">
           Los conteos incluyen las observaciones vigentes (no rechazadas en revisión humana) y solo provienen del tiempo
           observado. El tiempo no observado no equivale a ausencia de conducta: se muestra con su motivo. El periodo de
           estudio de cada participante va desde su primera asignación a un protocolo hasta el fin de la última, su retiro
@@ -69,9 +69,9 @@ async function Overview({ params }: { params: PageProps<"/studies/[code]">["para
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">Cobertura diaria</h2>
+        <h2 className="font-serif text-lg font-medium">Cobertura diaria</h2>
         <DailyCoverageTable study={study} base={base} />
-        <p className="max-w-3xl text-xs text-neutral-500">Días según la zona horaria de cada participante.</p>
+        <p className="max-w-3xl text-xs text-ink-muted">Días según la zona horaria de cada participante.</p>
       </section>
     </div>
   );
@@ -87,12 +87,12 @@ function ParticipantLink({ base, pseudonym }: { base: string; pseudonym: string 
 
 function ParticipantsTable({ study, base }: { study: StudyOverview; base: string }) {
   if (study.participants.length === 0) {
-    return <p className="text-sm text-neutral-500">Este estudio no tiene participantes.</p>;
+    return <p className="text-sm text-ink-muted">Este estudio no tiene participantes.</p>;
   }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="border-b border-neutral-200 align-bottom text-neutral-500 dark:border-neutral-800">
+        <thead className="border-b border-rule align-bottom text-ink-muted">
           <tr>
             <th className="py-2 pr-4 font-medium">Participante</th>
             <th className="py-2 pr-4 font-medium">Estado</th>
@@ -109,18 +109,18 @@ function ParticipantsTable({ study, base }: { study: StudyOverview; base: string
         </thead>
         <tbody>
           {study.participants.map((participant) => (
-            <tr key={participant.id} className="border-b border-neutral-100 align-top dark:border-neutral-900">
+            <tr key={participant.id} className="border-b border-rule align-top">
               <td className="py-2 pr-4 font-mono">
                 <ParticipantLink base={base} pseudonym={participant.pseudonym} />
               </td>
               <td className="py-2 pr-4">{label(PARTICIPANT_STATUS_LABELS, participant.status)}</td>
               <td className="py-2 pr-4 font-mono">
-                {participant.protocolLabel ?? <span className="text-neutral-500">—</span>}
+                {participant.protocolLabel ?? <span className="text-ink-muted">—</span>}
               </td>
               {study.eventTypes.map((eventType) => (
                 <td key={eventType.key} className="py-2 pr-4 text-right tabular-nums">
                   {!participant.measuredEventKeys.includes(eventType.key) ? (
-                    <span className="text-xs text-neutral-500" title="Su protocolo no define esta variable">
+                    <span className="text-xs text-ink-muted" title="Su protocolo no define esta variable">
                       no medido
                     </span>
                   ) : participant.coverage.observedSeconds > 0 ? (
@@ -147,12 +147,12 @@ function ParticipantsTable({ study, base }: { study: StudyOverview; base: string
 function DailyCoverageTable({ study, base }: { study: StudyOverview; base: string }) {
   const rows = study.participants.flatMap((participant) => participant.days.map((day) => ({ participant, day })));
   if (rows.length === 0) {
-    return <p className="text-sm text-neutral-500">Ningún participante tiene un periodo de estudio en curso o pasado (asignación a un protocolo).</p>;
+    return <p className="text-sm text-ink-muted">Ningún participante tiene un periodo de estudio en curso o pasado (asignación a un protocolo).</p>;
   }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="border-b border-neutral-200 text-neutral-500 dark:border-neutral-800">
+        <thead className="border-b border-rule text-ink-muted">
           <tr>
             <th className="py-2 pr-4 font-medium">Participante</th>
             <th className="py-2 pr-4 font-medium">Día</th>
@@ -162,7 +162,7 @@ function DailyCoverageTable({ study, base }: { study: StudyOverview; base: strin
         </thead>
         <tbody>
           {rows.map(({ participant, day }) => (
-            <tr key={`${participant.id}:${day.day}`} className="border-b border-neutral-100 align-top dark:border-neutral-900">
+            <tr key={`${participant.id}:${day.day}`} className="border-b border-rule align-top">
               <td className="py-2 pr-4 font-mono">
                 <ParticipantLink base={base} pseudonym={participant.pseudonym} />
               </td>
@@ -183,7 +183,7 @@ function DailyCoverageTable({ study, base }: { study: StudyOverview; base: strin
 
 function NotObservedMark() {
   return (
-    <span className="text-xs text-neutral-500" title="Sin tiempo observado: no se puede afirmar que no ocurrió">
+    <span className="text-xs text-ink-muted" title="Sin tiempo observado: no se puede afirmar que no ocurrió">
       sin tiempo observado
     </span>
   );
@@ -191,34 +191,34 @@ function NotObservedMark() {
 
 function ObservedTime({ coverage }: { coverage: CoverageBreakdown }) {
   if (coverage.totalSeconds === 0) {
-    return <span className="text-neutral-500">Sin periodo de estudio (sin protocolo asignado o aún no comienza)</span>;
+    return <span className="text-ink-muted">Sin periodo de estudio (sin protocolo asignado o aún no comienza)</span>;
   }
   if (coverage.observedSeconds === 0) {
     return (
       <span>
         <NotObservedMark />
-        <span className="block text-xs text-neutral-500">de {formatDuration(coverage.totalSeconds)}</span>
+        <span className="block text-xs text-ink-muted">de {formatDuration(coverage.totalSeconds)}</span>
       </span>
     );
   }
   return (
     <span className="whitespace-nowrap tabular-nums">
       {formatDuration(coverage.observedSeconds)}
-      <span className="text-neutral-500"> de {formatDuration(coverage.totalSeconds)}</span>
+      <span className="text-ink-muted"> de {formatDuration(coverage.totalSeconds)}</span>
     </span>
   );
 }
 
 function NotObservedList({ coverage }: { coverage: CoverageBreakdown }) {
   if (coverage.notObserved.length === 0) {
-    return <span className="text-neutral-500">—</span>;
+    return <span className="text-ink-muted">—</span>;
   }
   return (
     <ul className="flex flex-col gap-0.5">
       {coverage.notObserved.map(({ status, seconds }) => (
         <li key={status} className="whitespace-nowrap">
           {label(COVERAGE_STATUS_LABELS, status)}
-          <span className="tabular-nums text-neutral-500"> · {formatDuration(seconds)}</span>
+          <span className="tabular-nums text-ink-muted"> · {formatDuration(seconds)}</span>
         </li>
       ))}
     </ul>

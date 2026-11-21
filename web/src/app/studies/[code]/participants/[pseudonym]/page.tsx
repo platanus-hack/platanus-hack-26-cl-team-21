@@ -11,7 +11,7 @@ import { ParticipantHeader } from "./_components/participant-header";
 
 export default function ParticipantPage({ params }: PageProps<"/studies/[code]/participants/[pseudonym]">) {
   return (
-    <Suspense fallback={<p className="text-sm text-zinc-500">Cargando línea de tiempo…</p>}>
+    <Suspense fallback={<p className="text-sm text-ink-muted">Cargando línea de tiempo…</p>}>
       <ParticipantTimelineView params={params} />
     </Suspense>
   );
@@ -30,7 +30,7 @@ async function ParticipantTimelineView({ params }: { params: Promise<{ code: str
     <div className="space-y-8">
       <ParticipantHeader data={data} />
       {data.days.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-black/20 p-6 text-sm text-zinc-500 dark:border-white/20">
+        <p className="rounded-lg border border-dashed border-hairline p-6 text-sm text-ink-muted">
           Este participante no tiene periodo de estudio (sin protocolo asignado o aún no comienza) ni observaciones. Sin datos no se reporta ningún
           conteo.
         </p>
@@ -38,8 +38,8 @@ async function ParticipantTimelineView({ params }: { params: Promise<{ code: str
         <>
           <CoverageLegend showNoRecord={showNoRecord} />
           {data.days.map((day) => (
-            <section key={day.day} aria-labelledby={`day-${day.day}`} className="space-y-4 border-t border-black/10 pt-6 dark:border-white/10">
-              <h2 id={`day-${day.day}`} className="text-xl font-semibold">
+            <section key={day.day} aria-labelledby={`day-${day.day}`} className="space-y-4 border-t border-rule pt-6">
+              <h2 id={`day-${day.day}`} className="font-serif text-xl font-medium">
                 {formatLocalDay(day.day, "long")}
               </h2>
               <DayTimeline day={day} timeZone={tz} />

@@ -1,16 +1,13 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Newsreader } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Self-hosted by next/font at build time: no request to Google at runtime.
+const newsreader = Newsreader({
+  variable: "--font-newsreader",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  axes: ["opsz"],
 });
 
 export const metadata: Metadata = {
@@ -22,15 +19,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     // Browser extensions add attributes to <html> before React hydrates (e.g. data-mbtss-nonce). This only
     // silences attribute mismatches on <html> itself, one level deep; mismatches in children still show.
-    <html lang="es" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="es" className={`${newsreader.variable} h-full antialiased`} suppressHydrationWarning>
       <body className="flex min-h-full flex-col">
-        <header className="border-b border-neutral-200 dark:border-neutral-800">
+        <header className="border-b border-rule">
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-3">
-            <Link href="/studies" className="font-semibold">
+            <Link href="/" className="font-serif text-lg font-medium text-primary">
               Observatorio Longitudinal Multimodal
             </Link>
             <nav aria-label="Principal" className="text-sm">
-              <Link href="/studies" className="text-neutral-600 hover:text-foreground dark:text-neutral-400">
+              <Link href="/studies" className="inline-flex min-h-10 items-center text-ink-muted hover:text-ink">
                 Estudios
               </Link>
             </nav>

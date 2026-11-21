@@ -9,13 +9,12 @@ type Result = { kind: "idle" } | { kind: "working" } | { kind: "error"; message:
 
 const FORMAT_LABEL = { csv: "CSV", json: "JSON" } as const;
 
-// Native controls get an explicit color scheme in dark mode so the select and the date picker follow it.
-const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:focus-visible:outline-blue-400";
-const inputClass = `rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:[color-scheme:dark] ${focusRing}`;
-const labelClass = "flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400";
-const legendClass = "mb-1 text-xs font-medium text-zinc-600 dark:text-zinc-400";
-const radioClass = `accent-zinc-900 dark:accent-zinc-100 ${focusRing}`;
-const hintClass = "text-xs text-zinc-500 dark:text-zinc-400";
+const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary";
+const inputClass = `min-h-10 rounded-lg border border-hairline bg-paper px-3 text-sm text-ink ${focusRing}`;
+const labelClass = "flex flex-col gap-1 text-xs font-medium text-ink-muted";
+const legendClass = "mb-1 text-xs font-medium text-ink-muted";
+const radioClass = `accent-primary ${focusRing}`;
+const hintClass = "text-xs text-ink-muted";
 
 const FILE_NAME_PATTERN = /filename="([^"]+)"/;
 
@@ -52,7 +51,7 @@ export function ExportForm({ action, participants }: { action: string; participa
   }
 
   return (
-    <form method="post" action={action} onSubmit={onSubmit} className="flex flex-col gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+    <form method="post" action={action} onSubmit={onSubmit} className="flex flex-col gap-4 rounded-lg border border-rule p-4">
       <div className="flex flex-wrap gap-8">
         <fieldset>
           <legend className={legendClass}>Formato</legend>
@@ -112,7 +111,7 @@ export function ExportForm({ action, participants }: { action: string; participa
       </p>
 
       {dataset === "observations" && (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+        <p className="rounded-r-lg border-l-4 border-warning bg-paper-deep px-3 py-2 text-sm text-ink">
           Sin los intervalos de cobertura no se puede interpretar la ausencia de observaciones: en tiempo no observado no hay un cero.
           Exporta también la cobertura con los mismos filtros antes de analizar conteos o tasas.
         </p>
@@ -122,7 +121,7 @@ export function ExportForm({ action, participants }: { action: string; participa
         <button
           type="submit"
           disabled={result.kind === "working"}
-          className={`rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300 ${focusRing}`}
+          className={`min-h-10 rounded-lg bg-primary px-4 text-sm font-medium text-on-primary hover:bg-primary/90 disabled:opacity-50 ${focusRing}`}
         >
           {result.kind === "working" ? "Generando…" : "Generar y descargar"}
         </button>
@@ -130,9 +129,9 @@ export function ExportForm({ action, participants }: { action: string; participa
       </div>
 
       <div aria-live="polite">
-        {result.kind === "error" && <p className="text-sm text-red-700 dark:text-red-400">{result.message}</p>}
+        {result.kind === "error" && <p className="text-sm text-error">{result.message}</p>}
         {result.kind === "done" && (
-          <p className="text-sm text-emerald-800 dark:text-emerald-400">
+          <p className="text-sm text-ink">
             Descargado{" "}
             <span className="font-mono" translate="no">{result.fileName}</span>
             {result.sha256 && (

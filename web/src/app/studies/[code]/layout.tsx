@@ -24,10 +24,10 @@ async function StudyHeader({ params }: { params: LayoutProps<"/studies/[code]">[
   return (
     <header className="flex flex-col gap-3">
       <div>
-        <p className="font-mono text-xs text-neutral-500" translate="no">
+        <p className="font-mono text-xs text-ink-muted" translate="no">
           {study.code} · {label(STUDY_STATUS_LABELS, study.status)}
         </p>
-        <h1 className="text-2xl font-semibold">{study.title}</h1>
+        <h1 className="font-serif text-3xl font-medium text-primary">{study.title}</h1>
       </div>
       <StudyTabs code={study.code} />
     </header>

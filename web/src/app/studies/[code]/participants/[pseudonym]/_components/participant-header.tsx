@@ -13,7 +13,7 @@ export function ParticipantHeader({ data }: { data: ParticipantTimeline }) {
   return (
     <header className="space-y-4">
       {/* The study layout already shows the study and its tabs; participant pages have no tab of their own. */}
-      <nav aria-label="Ruta" className="text-sm text-zinc-500">
+      <nav aria-label="Ruta" className="text-sm text-ink-muted">
         <Link href={`/studies/${encodeURIComponent(study.code)}`} className="hover:underline">
           Resumen
         </Link>{" "}
@@ -23,31 +23,31 @@ export function ParticipantHeader({ data }: { data: ParticipantTimeline }) {
         <h2 className="font-mono text-3xl font-semibold" translate="no">
           {participant.pseudonym}
         </h2>
-        <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-sm text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+        <span className="rounded-full bg-paper-deep px-2.5 py-0.5 text-sm text-ink-muted">
           {label(PARTICIPANT_STATUS_LABELS, participant.status)}
         </span>
-        {participant.arm && <span className="text-sm text-zinc-500">Grupo: {participant.arm}</span>}
+        {participant.arm && <span className="text-sm text-ink-muted">Grupo: {participant.arm}</span>}
       </div>
       <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <dt className="text-zinc-500">Protocolo</dt>
+          <dt className="text-ink-muted">Protocolo</dt>
           <dd>
             {protocols.length === 0
               ? "Sin protocolo asignado"
               : protocols.map((p) => (
                   <div key={`${p.label}-${p.fromMs}`}>
-                    <span className="font-mono">{p.label}</span> <span className="text-zinc-500">({validity(p.fromMs, p.toMs, tz)})</span>
+                    <span className="font-mono">{p.label}</span> <span className="text-ink-muted">({validity(p.fromMs, p.toMs, tz)})</span>
                   </div>
                 ))}
             {period && (
-              <div className="text-xs text-zinc-500">
+              <div className="text-xs text-ink-muted">
                 Periodo de estudio: {formatDate(period.fromMs, tz)} – {period.ongoing ? "hoy (en curso)" : formatDate(period.toMs, tz)}
               </div>
             )}
           </dd>
         </div>
         <div>
-          <dt className="text-zinc-500">Dispositivo y firmware</dt>
+          <dt className="text-ink-muted">Dispositivo y firmware</dt>
           <dd>
             {devices.length === 0
               ? "Sin dispositivo asignado"
@@ -55,7 +55,7 @@ export function ParticipantHeader({ data }: { data: ParticipantTimeline }) {
                   <div key={`${d.serial}-${d.fromMs}`}>
                     <span className="font-mono">{d.serial}</span> · firmware{" "}
                     <span className="font-mono">{d.firmwareVersions.length ? d.firmwareVersions.join(", ") : "sin datos"}</span>
-                    <div className="text-xs text-zinc-500">
+                    <div className="text-xs text-ink-muted">
                       {d.hardwareRevision} · {validity(d.fromMs, d.toMs, tz)}
                     </div>
                   </div>
@@ -63,7 +63,7 @@ export function ParticipantHeader({ data }: { data: ParticipantTimeline }) {
           </dd>
         </div>
         <div>
-          <dt className="text-zinc-500">Modelo y pipeline</dt>
+          <dt className="text-ink-muted">Modelo y pipeline</dt>
           <dd>
             {runs.length === 0
               ? "Sin observaciones"
@@ -75,10 +75,10 @@ export function ParticipantHeader({ data }: { data: ParticipantTimeline }) {
           </dd>
         </div>
         <div>
-          <dt className="text-zinc-500">Zona horaria</dt>
+          <dt className="text-ink-muted">Zona horaria</dt>
           <dd>
             <span className="font-mono">{tz}</span>
-            <div className="text-xs text-zinc-500">Días y horas en la hora local del participante</div>
+            <div className="text-xs text-ink-muted">Días y horas en la hora local del participante</div>
           </dd>
         </div>
       </dl>
