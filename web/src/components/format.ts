@@ -32,6 +32,8 @@ export const COVERAGE_STATUS_LABELS: Record<string, string> = {
   low_battery: "Batería baja",
   no_upload: "No subido",
   low_quality: "Calidad insuficiente",
+  // Not a coverage_intervals status: study-period time with no coverage row (nothing uploaded).
+  no_record: "Sin registro",
 };
 
 export function label(labels: Record<string, string>, value: string) {

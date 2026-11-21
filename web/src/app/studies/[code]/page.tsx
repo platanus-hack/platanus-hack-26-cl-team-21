@@ -68,7 +68,9 @@ async function Overview({ params }: { params: PageProps<"/studies/[code]">["para
         <ParticipantsTable study={study} base={base} />
         <p className="max-w-3xl text-xs text-neutral-500">
           Los conteos incluyen las observaciones vigentes (no rechazadas en revisión humana) y solo provienen del tiempo
-          observado. El tiempo no observado no equivale a ausencia de conducta: se muestra con su motivo.
+          observado. El tiempo no observado no equivale a ausencia de conducta: se muestra con su motivo. El periodo de
+          cada participante va desde su asignación al protocolo hasta hoy o su retiro; &quot;Sin registro&quot; es tiempo
+          de ese periodo sin datos subidos.
         </p>
       </section>
 
@@ -123,7 +125,11 @@ function ParticipantsTable({ study, base }: { study: StudyOverview; base: string
               </td>
               {study.eventTypes.map((eventType) => (
                 <td key={eventType.key} className="py-2 pr-4 text-right tabular-nums">
-                  {participant.coverage.observedSeconds > 0 ? (
+                  {!participant.measuredEventKeys.includes(eventType.key) ? (
+                    <span className="text-xs text-neutral-500" title="Su protocolo no define esta variable">
+                      no medido
+                    </span>
+                  ) : participant.coverage.observedSeconds > 0 ? (
                     (participant.observationCounts[eventType.key] ?? 0)
                   ) : (
                     <NotObservedMark />
@@ -191,20 +197,20 @@ function NotObservedMark() {
 
 function ObservedTime({ coverage }: { coverage: CoverageBreakdown }) {
   if (coverage.totalSeconds === 0) {
-    return <span className="text-neutral-500">Sin cobertura registrada</span>;
+    return <span className="text-neutral-500">Sin periodo ni cobertura registrados</span>;
   }
   if (coverage.observedSeconds === 0) {
     return (
       <span>
         <NotObservedMark />
-        <span className="block text-xs text-neutral-500">de {formatDuration(coverage.totalSeconds)} cubiertas</span>
+        <span className="block text-xs text-neutral-500">de {formatDuration(coverage.totalSeconds)}</span>
       </span>
     );
   }
   return (
     <span className="whitespace-nowrap tabular-nums">
       {formatDuration(coverage.observedSeconds)}
-      <span className="text-neutral-500"> de {formatDuration(coverage.totalSeconds)} cubiertas</span>
+      <span className="text-neutral-500"> de {formatDuration(coverage.totalSeconds)}</span>
     </span>
   );
 }
