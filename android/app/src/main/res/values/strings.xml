@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Observatorio</string>
+
+    <string name="back">Volver</string>
+    <string name="next">Continuar</string>
+
+    <!-- Onboarding: welcome -->
+    <string name="welcome_title_before">Ciencia que observa,\u0020</string>
+    <string name="welcome_title_highlight">con tu permiso</string>
+    <string name="welcome_subtitle">Un observatorio de tu día a día</string>
+    <string name="welcome_body">Un colgante registra video y datos del ambiente según el protocolo del estudio. Tú revisas todo antes de que salga de tu teléfono.</string>
+    <string name="welcome_start">Comenzar</string>
+    <string name="welcome_voluntary">Participación voluntaria. Puedes retirarte cuando quieras.</string>
+
+    <!-- Onboarding: join study -->
+    <string name="join_title">Unirse a un estudio</string>
+    <string name="join_body">Ingresa los códigos que te entregó el equipo de investigación.</string>
+    <string name="join_study_code">Código del estudio</string>
+    <string name="join_participant_id">Código de participante</string>
+    <string name="join_pseudonym_note">Tu código es un seudónimo: el estudio no guarda tu nombre junto a tus datos.</string>
+
+    <!-- Onboarding: consent -->
+    <string name="consent_title">Consentimiento</string>
+    <string name="consent_study">Episodios de alimentación</string>
+    <string name="consent_protocol">Protocolo eating-v1 · cuándo comes o bebes, cuánto dura y en qué contexto visible.</string>
+    <string name="consent_records">Qué se registra</string>
+    <string name="consent_records_video">Video del colgante en los horarios del protocolo</string>
+    <string name="consent_records_sensors">Temperatura, humedad, sonido y gases (lecturas relativas)</string>
+    <string name="consent_records_events">Batería, interruptor de privacidad y botón de evento</string>
+    <string name="consent_never">Qué nunca se hace</string>
+    <string name="consent_never_upload">Subir algo sin tu revisión</string>
+    <string name="consent_never_calories">Estimar calorías, porciones o nutrientes</string>
+    <string name="consent_never_emotions">Inferir emociones, estrés o intenciones</string>
+    <string name="consent_control">El interruptor del colgante apaga la cámara en cualquier momento, y puedes excluir cualquier tramo antes de subirlo.</string>
+    <string name="consent_checkbox">Leí la información y acepto participar</string>
+    <string name="consent_accept">Aceptar</string>
+
+    <!-- Onboarding: pairing -->
+    <string name="pair_title">Conectar el colgante</string>
+    <string name="pair_body">Enciende el colgante y mantenlo cerca del teléfono.</string>
+    <string name="pair_nearby">Cerca de ti</string>
+    <string name="pair_searching">Buscando…</string>
+    <string name="pair_found">Disponible</string>
+    <string name="pair_connecting">Conectando…</string>
+    <string name="pair_connected">Conectado</string>
+    <string name="pair_connect">Conectar</string>
+    <string name="pair_clock_synced">Reloj sincronizado con tu teléfono (desfase %1$s s).</string>
+    <string name="pair_finish">Listo</string>
+
+    <string name="tab_device">Dispositivo</string>
+    <string name="tab_review">Revisar</string>
+
+    <!-- Device -->
+    <string name="device_connected">Conectado · firmware %1$s</string>
+    <string name="device_disconnected">Sin conexión</string>
+    <string name="device_recording">Grabando</string>
+    <string name="device_privacy">Cámara apagada por el interruptor de privacidad</string>
+    <string name="device_status">Estado</string>
+    <string name="device_battery">Batería</string>
+    <string name="device_charging">%1$d %% · cargando</string>
+    <string name="device_percent">%1$d %%</string>
+    <string name="device_battery_low">Batería baja</string>
+    <string name="device_storage">Almacenamiento</string>
+    <string name="device_storage_used">%1$d %% usado</string>
+    <string name="device_sensors">Sensores</string>
+    <string name="sensor_temperature">Temperatura</string>
+    <string name="sensor_humidity">Humedad</string>
+    <string name="sensor_sound">Sonido</string>
+    <string name="sensor_co">CO · MQ-7</string>
+    <string name="sensor_gas">Gases · MQ-2</string>
+    <string name="sensor_raw_unit">bruto</string>
+    <string name="sensor_relative_note">Lecturas relativas, sin calibrar. No son mediciones certificadas.</string>
+    <string name="device_updated">Actualizado %1$s</string>
+    <string name="device_server">Servidor</string>
+    <string name="device_server_checking">Consultando…</string>
+    <string name="device_server_ok">Conectado</string>
+    <string name="device_server_error">Sin conexión</string>
+
+    <!-- Review -->
+    <string name="review_summary_before">Clips por revisar:\u0020</string>
+    <string name="review_summary_count">%1$d de %2$d</string>
+    <string name="review_privacy_note">Nada sale de tu teléfono hasta que lo apruebes. De lo que excluyas solo se envía el horario, nunca el contenido.</string>
+    <string name="review_clip_meta">%1$s · %2$s</string>
+    <string name="status_pending">Pendiente</string>
+    <string name="status_approved">Aprobado</string>
+    <string name="status_excluded">Excluido</string>
+
+    <!-- Clip detail -->
+    <string name="clip_preview_unavailable">Vista previa no disponible\n(colgante simulado)</string>
+    <string name="clip_exclude_range_title">Excluir un tramo</string>
+    <string name="clip_exclude_range_hint">Elige el tramo que no quieres compartir.</string>
+    <string name="clip_exclude_range">Excluir tramo</string>
+    <string name="clip_excluded_ranges">Tramos excluidos</string>
+    <string name="clip_remove_range">Quitar tramo %1$s</string>
+    <string name="clip_exclude_all">Excluir clip completo</string>
+    <string name="clip_approve">Aprobar</string>
+</resources>
