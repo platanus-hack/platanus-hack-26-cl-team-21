@@ -1,0 +1,41 @@
+#!/bin/sh
+# Light, local versions of the CI checks (.github/workflows/ci.yml) for the areas the current
+# branch changes. CI still runs the full checks. Skip with `git push --no-verify`.
+set -e
+
+base="$(git merge-base HEAD origin/main 2> /dev/null)" || exit 0
+changed="$(git diff --name-only --diff-filter=d "$base" HEAD)"
+[ -n "$changed" ] || exit 0
+
+touches() {
+  printf '%s\n' "$changed" | grep -Eq "$1"
+}
+
+if touches '^tools/mock-api/'; then
+  echo "pre-push: mock API tests"
+  node --test tools/mock-api/server.test.mjs > /dev/null
+fi
+
+if [ ! -d node_modules ]; then
+  echo "pre-push: node_modules missing, run npm install. Skipping web and db checks." >&2
+  exit 0
+fi
+
+if touches '^web/.*\.(ts|tsx|js|mjs)$'; then
+  echo "pre-push: eslint on changed web files"
+  (cd web && git diff -z --name-only --diff-filter=d --relative "$base" HEAD -- '*.ts' '*.tsx' '*.js' '*.mjs' |
+    xargs -0 ../node_modules/.bin/eslint)
+fi
+
+if touches '^(db/(src/|migrations/|drizzle\.config\.ts|package\.json)|package(-lock)?\.json)'; then
+  echo "pre-push: drizzle migrations"
+  if [ -n "$(git status --porcelain -- db/src db/migrations db/drizzle.config.ts)" ]; then
+    echo "pre-push: db/ has uncommitted changes. Commit or stash them, the migration check needs the committed schema." >&2
+    exit 1
+  fi
+  (cd db && npx --no-install drizzle-kit check > /dev/null && npx --no-install drizzle-kit generate > /dev/null)
+  if [ -n "$(git status --porcelain -- db/migrations)" ]; then
+    echo "pre-push: the schema has changes without a migration. Commit the files npm run db:generate created in db/migrations." >&2
+    exit 1
+  fi
+fi
