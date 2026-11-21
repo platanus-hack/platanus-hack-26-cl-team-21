@@ -1,5 +1,15 @@
 import { cache } from "react";
-import { db, eq, participants, sql, studies, type COVERAGE_STATUS } from "@observatorio/db";
+import {
+  db,
+  eq,
+  eventTypes,
+  participantProtocols,
+  participants,
+  protocolVersions,
+  sql,
+  studies,
+  type COVERAGE_STATUS,
+} from "@observatorio/db";
 
 // Read models for the study list and the study overview. Callers must `await connection()` first.
 
@@ -79,39 +89,46 @@ export async function getStudyOverview(code: string): Promise<StudyOverview | nu
   const study = await getStudyByCode(code);
   if (!study) return null;
 
-  const [protocolsInUse, eventTypes, participantRows, counts, coverage] = await Promise.all([
-    // Raw queries return timestamptz as text (drizzle's node-postgres parser), so instants are
-    // selected as epoch milliseconds.
-    db.execute<Omit<ProtocolInUse, "publishedAt"> & { publishedAtMs: number | null }>(sql`
-      select pv.version_label as "versionLabel", pv.status,
-             (extract(epoch from pv.published_at) * 1000)::float8 as "publishedAtMs",
-             count(distinct pp.participant_id)::int as "participantCount"
-      from participant_protocols pp
-      join participants p on p.id = pp.participant_id
-      join protocol_versions pv on pv.id = pp.protocol_version_id
-      where p.study_id = ${study.id}
-        and pp.valid_from <= now() and (pp.valid_to is null or pp.valid_to > now())
-      group by pv.id
-      order by pv.published_at desc nulls last`),
+  // Assignment valid now; the no-overlap rule leaves at most one per participant.
+  const currentAssignment = sql`${participantProtocols.validFrom} <= now()
+    and (${participantProtocols.validTo} is null or ${participantProtocols.validTo} > now())`;
+
+  // Plain tables go through the query builder; the view and the per-day coverage split
+  // (generate_series) are raw SQL.
+  const [protocolsInUse, eventTypeColumns, participantRows, counts, coverage] = await Promise.all([
+    db
+      .select({
+        versionLabel: protocolVersions.versionLabel,
+        status: protocolVersions.status,
+        publishedAt: protocolVersions.publishedAt,
+        participantCount: sql<number>`count(distinct ${participantProtocols.participantId})::int`,
+      })
+      .from(participantProtocols)
+      .innerJoin(participants, eq(participants.id, participantProtocols.participantId))
+      .innerJoin(protocolVersions, eq(protocolVersions.id, participantProtocols.protocolVersionId))
+      .where(sql`${eq(participants.studyId, study.id)} and ${currentAssignment}`)
+      .groupBy(protocolVersions.id)
+      .orderBy(sql`${protocolVersions.publishedAt} desc nulls last`),
     // Event types are grouped by key across protocol versions (the key is stable); the label comes
     // from the most recently published version that defines it.
-    db.execute<EventTypeColumn>(sql`
-      select key, label from (
-        select distinct on (et.key) et.key, et.label
-        from event_types et
-        join protocol_versions pv on pv.id = et.protocol_version_id
-        where pv.study_id = ${study.id} and pv.status <> 'draft'
-        order by et.key, pv.published_at desc nulls last
-      ) t
-      order by key`),
-    db.execute<{ id: string; pseudonym: string; status: string; protocolLabel: string | null }>(sql`
-      select p.id, p.pseudonym, p.status, pv.version_label as "protocolLabel"
-      from participants p
-      left join participant_protocols pp on pp.participant_id = p.id
-        and pp.valid_from <= now() and (pp.valid_to is null or pp.valid_to > now())
-      left join protocol_versions pv on pv.id = pp.protocol_version_id
-      where p.study_id = ${study.id}
-      order by p.pseudonym`),
+    db
+      .selectDistinctOn([eventTypes.key], { key: eventTypes.key, label: eventTypes.label })
+      .from(eventTypes)
+      .innerJoin(protocolVersions, eq(protocolVersions.id, eventTypes.protocolVersionId))
+      .where(sql`${eq(protocolVersions.studyId, study.id)} and ${protocolVersions.status} <> 'draft'`)
+      .orderBy(eventTypes.key, sql`${protocolVersions.publishedAt} desc nulls last`),
+    db
+      .select({
+        id: participants.id,
+        pseudonym: participants.pseudonym,
+        status: participants.status,
+        protocolLabel: protocolVersions.versionLabel,
+      })
+      .from(participants)
+      .leftJoin(participantProtocols, sql`${eq(participantProtocols.participantId, participants.id)} and ${currentAssignment}`)
+      .leftJoin(protocolVersions, eq(protocolVersions.id, participantProtocols.protocolVersionId))
+      .where(eq(participants.studyId, study.id))
+      .orderBy(participants.pseudonym),
     db.execute<{ participantId: string; key: string; n: number }>(sql`
       select o.participant_id as "participantId", et.key, count(*)::int as n
       from v_current_observations o
@@ -156,12 +173,9 @@ export async function getStudyOverview(code: string): Promise<StudyOverview | nu
 
   return {
     ...study,
-    protocolsInUse: protocolsInUse.rows.map(({ publishedAtMs, ...protocol }) => ({
-      ...protocol,
-      publishedAt: publishedAtMs === null ? null : new Date(publishedAtMs),
-    })),
-    eventTypes: eventTypes.rows,
-    participants: participantRows.rows.map((p) => {
+    protocolsInUse,
+    eventTypes: eventTypeColumns,
+    participants: participantRows.map((p) => {
       const byDay = coverageByParticipant.get(p.id) ?? new Map<string, Map<CoverageStatus, number>>();
       const days = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, byStatus]) => ({ day, ...breakdown(byStatus) }));
       const total = new Map<CoverageStatus, number>();
