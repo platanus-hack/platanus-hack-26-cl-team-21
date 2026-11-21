@@ -46,3 +46,4 @@ Render only deploys from repos you own: set up the personal mirror described in 
 - `web/` uses Cache Components (Next 16): a page or route handler that reads the DB must call `await connection()` (from `next/server`) or be inside `<Suspense>`; otherwise `next build` fails or tries to query the DB at build time, which has no access to it on Render.
 - Only one person at a time generates migrations (`npm run db:generate`); two parallel `0001_*` files collide in `db/migrations/meta/_journal.json`.
 - On Render's free plan `olm-web` sleeps after ~15 min; the first request takes 30–60 s.
+- CI (`.github/workflows/ci.yml`) runs each job only when the PR touches its files: `web` (lint, build), `db` (migration checks, rule tests, seed), `mock-api` (tests) and `android` (build, lint). Editing the workflow runs them all.
