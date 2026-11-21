@@ -18,6 +18,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -25,7 +26,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import cl.observatorio.participante.pendant.FakePendant
+import cl.observatorio.participante.pendant.MockPendant
+import cl.observatorio.participante.pendant.PendantApi
+import cl.observatorio.participante.review.ReviewQueue
 import cl.observatorio.participante.ui.ClipDetailScreen
 import cl.observatorio.participante.ui.ConsentScreen
 import cl.observatorio.participante.ui.DeviceScreen
@@ -43,6 +46,10 @@ class MainActivity : ComponentActivity() {
         setContent { ObservatorioTheme { App(prefs) } }
     }
 }
+
+// shortcut: process-wide instances instead of DI. Milestone 2 swaps MockPendant for the HTTP client.
+private val pendant: PendantApi = MockPendant()
+private val reviewQueue = ReviewQueue()
 
 // shortcut: a linear onboarding, two tabs and one detail screen, so plain state instead of navigation-compose.
 // Add it when screens need deep links or branch out of this flow.
@@ -70,10 +77,10 @@ private fun App(prefs: SharedPreferences) {
         return
     }
 
-    val openClip = FakePendant.clips.firstOrNull { it.id == openClipId }
+    val openClip = reviewQueue.clips.firstOrNull { it.id == openClipId }
     if (openClip != null) {
         BackHandler { openClipId = null }
-        ClipDetailScreen(openClip, onBack = { openClipId = null })
+        ClipDetailScreen(openClip, onChange = { reviewQueue.update(openClip.id, it) }, onBack = { openClipId = null })
         return
     }
 
@@ -97,7 +104,12 @@ private fun App(prefs: SharedPreferences) {
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
         Box(Modifier.padding(padding)) {
-            if (tab == 0) DeviceScreen() else ReviewScreen(FakePendant.clips, onOpen = { openClipId = it.id })
+            if (tab == 0) {
+                DeviceScreen(pendant)
+            } else {
+                LaunchedEffect(Unit) { reviewQueue.refresh(pendant) }
+                ReviewScreen(reviewQueue.clips, reviewQueue.loading, reviewQueue.pendantUnreachable, onOpen = { openClipId = it.id })
+            }
         }
     }
 }

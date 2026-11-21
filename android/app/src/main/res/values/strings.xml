@@ -52,18 +52,27 @@
     <string name="tab_review">Revisar</string>
 
     <!-- Device -->
+    <string name="device_searching">Buscando el colgante…</string>
+    <string name="device_not_found">No encontramos el colgante</string>
+    <string name="device_not_found_body">Puede estar lejos, apagado o con el interruptor de privacidad activado. Seguimos buscando.</string>
+    <string name="device_name">Colgante %1$s</string>
     <string name="device_connected">Conectado · firmware %1$s</string>
-    <string name="device_disconnected">Sin conexión</string>
     <string name="device_recording">Grabando</string>
-    <string name="device_privacy">Cámara apagada por el interruptor de privacidad</string>
+    <string name="device_not_recording">Sin grabar</string>
     <string name="device_status">Estado</string>
     <string name="device_battery">Batería</string>
-    <string name="device_charging">%1$d %% · cargando</string>
-    <string name="device_percent">%1$d %%</string>
+    <string name="device_battery_estimate">Estimado: %1$d %% · %2$s V</string>
     <string name="device_battery_low">Batería baja</string>
-    <string name="device_storage">Almacenamiento</string>
-    <string name="device_storage_used">%1$d %% usado</string>
+    <string name="device_external_power">Conectado a una fuente externa</string>
+    <string name="device_no_reading_yet">Sin lectura todavía</string>
+    <string name="device_storage">Espacio libre</string>
+    <string name="device_storage_free">%1$s MB</string>
+    <string name="device_clock">Reloj</string>
+    <string name="device_clock_synced">Sincronizado</string>
+    <string name="device_clock_not_synced">Sin sincronizar</string>
     <string name="device_sensors">Sensores</string>
+    <string name="sensor_no_reading_yet">El colgante todavía no envía lecturas.</string>
+    <string name="sensor_missing">Sin lectura</string>
     <string name="sensor_temperature">Temperatura</string>
     <string name="sensor_humidity">Humedad</string>
     <string name="sensor_sound">Sonido</string>
@@ -81,6 +90,9 @@
     <string name="review_summary_before">Clips por revisar:\u0020</string>
     <string name="review_summary_count">%1$d de %2$d</string>
     <string name="review_privacy_note">Nada sale de tu teléfono hasta que lo apruebes. De lo que excluyas solo se envía el horario, nunca el contenido.</string>
+    <string name="review_loading">Buscando sesiones en el colgante…</string>
+    <string name="review_pendant_unreachable">No encontramos el colgante. Se muestran los clips ya descargados.</string>
+    <string name="review_clip_no_clock">Hora desconocida</string>
     <string name="review_clip_meta">%1$s · %2$s</string>
     <string name="status_pending">Pendiente</string>
     <string name="status_approved">Aprobado</string>

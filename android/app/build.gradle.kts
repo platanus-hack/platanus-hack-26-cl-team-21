@@ -44,4 +44,7 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.compose.ui.tooling.preview)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    testImplementation(libs.junit)
+    // The platform's org.json is a stub in local unit tests.
+    testImplementation(libs.org.json)
 }
