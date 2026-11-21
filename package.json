@@ -15,6 +15,7 @@
     "db:generate": "npm run generate -w db",
     "db:migrate": "npm run migrate -w db",
     "db:test": "npm run test -w db",
+    "db:seed": "npm run seed -w db",
     "mock:api": "node tools/mock-api/main.mjs",
     "mock:api:test": "node --test tools/mock-api/server.test.mjs"
   }
