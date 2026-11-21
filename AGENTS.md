@@ -135,6 +135,8 @@ A volunteer wears the pendant through a scripted session with eating episodes, d
 - **Commits:** Conventional Commits (`feat(web): …`, `fix(firmware): …`). Scope = top-level folder.
 - **Branches:** `<github-user>/<short-topic>`; include the Linear issue ID when there is one.
 - **PRs:** small, one component when possible; mention any contract change explicitly.
+- **PR titles and bodies:** title `[MON-n] <conventional commit>`. The body follows `.github/pull_request_template.md` and has no AI attribution lines (no "Generated with Claude Code").
+- **Linear links:** Linear's GitHub integration isn't installed on this org, so PRs don't link themselves. Whoever opens a PR (person or agent) adds its URL as a link on the Linear issue (WorktreeManager reads PRs from there), and moves the issue to Done when the PR merges.
 - **Secrets:** never commit `.env` files or keys; provide `.env.example` per service.
 - **Setup docs:** backend/Android setup lives in `DEVELOPMENT.md`. Firmware/hardware get their own short `README.md` with build/flash instructions.
 - **Decisions:** short ADR-style notes in `docs/decisions/NNNN-title.md` (context, decision, consequences).
