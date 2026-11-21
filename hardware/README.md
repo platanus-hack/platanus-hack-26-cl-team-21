@@ -230,7 +230,7 @@ Each line is `<payload>*<checksum>\n`, where the checksum is the XOR of all payl
 ```text
 /sessions/<session_id>/          session_id = <device_id>-<start_epoch>
   session.json                   device_id, firmware_version, protocol_version, fps, resolution, start/end
-  frames/000001.jpg …
+  frames/000001.jpg …            six-digit zero-padded, starts at 1, matches frames.csv seq
   frames.csv                     seq,rtc_epoch_ms,uptime_ms,bytes
   sensors.csv                    rtc_epoch,uptime_ms,temp_c,rh_pct,mq7,mq2,sound_p2p,batt_mv
   events.csv                     rtc_epoch,uptime_ms,type,value
@@ -247,7 +247,7 @@ Sensor lines and events are only written while a session is active; events outsi
 | POST | `/capture/start?protocol=<v>` / `/capture/stop` | start or stop a session |
 | GET | `/sessions` | list session ids and which one is active |
 | GET | `/sessions/<id>/<file>` | download `session.json`, `frames.csv`, `sensors.csv`, `events.csv` |
-| GET | `/sessions/<id>/frames/<n>.jpg` | download a frame |
+| GET | `/sessions/<id>/frames/<NNNNNN>.jpg` | download a frame. The name is the `frames.csv` `seq` zero-padded to six digits (`000001.jpg` is the first frame); unpadded names return 404 |
 | DELETE | `/sessions/<id>` | remove a session after a confirmed upload. The id must be lowercase `[0-9a-z-]`, exist, and not be active |
 | POST | `/buzz?pattern=<p>` | test or trigger a notification |
 
