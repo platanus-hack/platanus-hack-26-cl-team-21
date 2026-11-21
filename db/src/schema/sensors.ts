@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   doublePrecision,
   foreignKey,
@@ -16,10 +17,16 @@ import {
 } from "drizzle-orm/pg-core";
 import { id, oneOf, tstz } from "./_shared";
 import { deviceSensors, devices } from "./devices";
+import { jobs } from "./jobs";
 import { participants } from "./participants";
 
-// One upload from the app. The raw payload is kept in object storage (rawStorageKey) so any
-// chunk can be rebuilt; (device, payload hash) makes re-sends a no-op.
+// Upload lifecycle (ADR 0002 §2): created by POST /uploads, `processing` once `complete` has
+// checked the files and enqueued the job, then `processed` or `failed` (set by the worker).
+export const UPLOAD_STATUS = ["awaiting_files", "processing", "processed", "failed"] as const;
+export const UPLOAD_ERROR_CODE = ["processing_failed", "files_mismatch"] as const;
+
+// One upload from the app (a session bundle, ADR 0002). The raw files are kept in object storage
+// under rawStorageKey so any chunk can be rebuilt; (device, payload hash) makes re-sends a no-op.
 export const syncBatches = pgTable(
   "sync_batches",
   {
@@ -37,11 +44,52 @@ export const syncBatches = pgTable(
     payloadSha256: text().notNull(),
     rawStorageKey: text(),
     receivedAt: tstz().notNull().defaultNow(),
+    deviceSessionId: text(), // session.json `session_id`, e.g. 'a1b2c3-1795280400'
+    status: text({ enum: UPLOAD_STATUS }).notNull().default("awaiting_files"),
+    errorCode: text({ enum: UPLOAD_ERROR_CODE }),
+    errorMessage: text(),
+    completedAt: tstz(), // when `complete` was accepted
+    jobId: integer().references(() => jobs.id), // the `process_session` job
   },
   (t) => [
     unique().on(t.deviceId, t.payloadSha256),
     index().on(t.participantId, t.recordedFrom),
     check("sync_batches_range_check", sql`${t.recordedTo} >= ${t.recordedFrom}`),
+    oneOf("sync_batches_status_check", t.status, UPLOAD_STATUS),
+    oneOf("sync_batches_error_code_check", t.errorCode, UPLOAD_ERROR_CODE),
+    check("sync_batches_completed_check", sql`(${t.status} = 'awaiting_files') = (${t.completedAt} is null)`),
+    check("sync_batches_error_check", sql`(${t.status} = 'failed') = (${t.errorCode} is not null)`),
+  ],
+);
+
+export const UPLOAD_FILE_KIND = ["video", "frames", "sensors", "events", "manifest"] as const;
+export const UPLOAD_CONTENT_TYPE = ["video/mp4", "text/csv", "application/json"] as const;
+
+// Files declared in POST /uploads, kept until `complete` checks them against object storage (size)
+// and the worker verifies their sha256. One row per kind; the manifest's hash is also
+// sync_batches.payload_sha256.
+export const syncBatchFiles = pgTable(
+  "sync_batch_files",
+  {
+    batchId: uuid()
+      .notNull()
+      .references(() => syncBatches.id, { onDelete: "cascade" }),
+    kind: text({ enum: UPLOAD_FILE_KIND }).notNull(),
+    sha256: text().notNull(),
+    sizeBytes: bigint({ mode: "number" }).notNull(),
+    contentType: text({ enum: UPLOAD_CONTENT_TYPE }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.batchId, t.kind] }),
+    oneOf("sync_batch_files_kind_check", t.kind, UPLOAD_FILE_KIND),
+    oneOf("sync_batch_files_content_type_check", t.contentType, UPLOAD_CONTENT_TYPE),
+    check("sync_batch_files_sha256_check", sql`${t.sha256} ~ '^[0-9a-f]{64}$'`),
+    check("sync_batch_files_size_check", sql`${t.sizeBytes} > 0`),
+    // ADR 0002 §1: the video is MP4, the device CSVs are CSV, the manifest is JSON.
+    check(
+      "sync_batch_files_kind_content_type_check",
+      sql`${t.contentType} = case ${t.kind} when 'video' then 'video/mp4' when 'manifest' then 'application/json' else 'text/csv' end`,
+    ),
   ],
 );
 
@@ -54,6 +102,10 @@ export const DEVICE_EVENT_KIND = [
   "button_press",
   "storage_full",
   "sensor_fault",
+  "boot", // BOOT: the sensor hub (re)started
+  "rtc_set", // RTC_SET: clock synced from the phone; payload keeps the old epoch (drift)
+  "rtc_lost", // RTC_LOST: the RTC lost its time
+  "camera_boot", // CAM_BOOT: the camera restarted (e.g. 'resumed' a session after a brownout)
 ] as const;
 
 // Discrete events reported by the device (the `device_event` contract in AGENTS.md §5). They are

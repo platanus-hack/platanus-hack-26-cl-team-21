@@ -123,25 +123,36 @@ No new API in v0: the portal reads the DB server-side through the existing table
 | `files[kind=video]` | `media_assets` (`sha256`, `size_bytes`, `mime_type`, `storage_key`, `kind = 'video'`) | Row created on `complete`; `base_retain_until` = `uploaded_at` + `studies.media_retention_days`. Deleted when a failed upload is retried, unless observation evidence references it |
 | `manifest.phone.app_version` | `sync_batches.app_version` | |
 | participant (from token) | `sync_batches.participant_id`, `media_assets.participant_id`, `coverage_intervals.participant_id` | |
-| `sensors.csv` | `sensor_series` + `sensor_chunks` / `sensor_hourly` via `ingest_sensor_readings()` | `temp_c` → `temperature_c`, `rh_pct` → `humidity_pct`, `mq7` → `co_raw`, `mq2` → `flammable_gas_raw`, `sound_p2p` → `sound_level_raw` |
-| `events.csv` | `device_events` (`batch_id = upload_id`) | `id` = UUIDv5 of `(device_id, rtc_epoch, uptime_ms, type)` (`uptime_ms` may be empty). `occurred_at` = `value` for `PRIVACY_*` (real switch time), else `rtc_epoch` (seconds). `PRIVACY_ON/OFF` → `privacy_switch_on/off`, `BUTTON` → `button_press`, `LOW_BATT`/`CRIT_BATT` → `low_battery` (original type in `payload`), `DHT_FAIL` → `sensor_fault` |
+| `sensors.csv` | `sensor_series` + `sensor_chunks` / `sensor_hourly` via `ingest_sensor_readings()` | `temp_c` → `temperature_c`, `rh_pct` → `humidity_pct`, `mq7` → `co_raw`, `mq2` → `flammable_gas_raw`, `sound_p2p` → `sound_level_raw`, `batt_mv` → `battery_mv`. Empty values (e.g. a failed DHT read) and `batt_mv` = -1 (external power) are skipped, not stored |
+| `events.csv` | `device_events` (`batch_id = upload_id`) | `id` = UUIDv5 of `(device_id, rtc_epoch, uptime_ms, type)` (`uptime_ms` may be empty). `occurred_at` = `value` for `PRIVACY_*` (real switch time), else `rtc_epoch` (seconds). `PRIVACY_ON/OFF` → `privacy_switch_on/off`, `BUTTON` → `button_press`, `LOW_BATT`/`CRIT_BATT` → `low_battery` (original type in `payload`), `DHT_FAIL` → `sensor_fault`, `BOOT` → `boot`, `RTC_SET` → `rtc_set` (old epoch in `payload`), `RTC_LOST` → `rtc_lost`, `CAM_BOOT` → `camera_boot` (`value` in `payload`) |
 | `excluded_intervals` | `coverage_intervals` (`excluded_by_participant`, source `app`) | |
-| `job_id` | `jobs.id` (`type = 'process_session'`, `payload = { "upload_id" }`) | `pipeline_runs.job_id` links the run back |
+| `job_id` | `sync_batches.job_id` → `jobs.id` (`type = 'process_session'`, `payload = { "upload_id" }`) | `pipeline_runs.job_id` links the run back |
+| `device_session_id` | `sync_batches.device_session_id` | Not unique: a session can be split into several bundles, and a failed upload is retried under a new `upload_id` |
+| `files[]` (`kind`, `sha256`, `bytes`, `content_type`) | `sync_batch_files` (`kind`, `sha256`, `size_bytes`, `content_type`) | One row per kind, written by `POST /uploads` and checked by `complete` and the worker |
+| upload `status` | `sync_batches.status` | `awaiting_files` → `processing` (on `complete`) → `processed` / `failed` |
+| upload `error` (`code`, `message`) | `sync_batches.error_code`, `sync_batches.error_message` | `error_code` is set if and only if `status = 'failed'` |
+| `complete` accepted at | `sync_batches.completed_at` | Set if and only if `status` is not `awaiting_files` |
+| enrollment `code` | `participants.enrollment_code` (unique), `participants.enrollment_code_used_at` | Used once: the server sets `enrollment_code_used_at` and returns 409 if it is already set |
+| `participant_token` | `participants.token_sha256` (unique, hex) | Only the hash is stored; revoking clears it |
 | enrollment `participant_id`, `study_id` | `participants.id`, `studies.id` | |
 
-### 8. Phase-2 schema gaps (migrations not written here)
+### 8. Phase-2 schema gaps
 
-- **Enrollment:** a single-use enrollment code (unique, with `used_at`) and the participant token hash. Neither exists on `participants`.
-- **Upload state:** `sync_batches` has no `status` (`awaiting_files | processing | processed | failed`), `error`, `completed_at` or `job_id`, and nowhere to keep the declared `files` (`kind`, `sha256`, `bytes`) between `POST /uploads` and `complete`.
-- **Device session:** no `device_session_id` column on `sync_batches`.
-- **Event kinds:** `device_events.kind` has no value for `BOOT`, `RTC_SET`, `RTC_LOST` or `CAM_BOOT`. In v0 they stay only in the raw `events.csv`; add the kinds if the portal needs them.
-- **Sensor setup:** no `sensor_types` rows are seeded (`battery_mv` included), and ingestion needs a `device_sensors` row per pendant component and a `sensor_series` (period 1 s) per participant and sensor, created when a device is registered or assigned.
+Migration `0003_enrollment_and_uploads` (MON-20) closes the schema gaps; the columns are in the §7 mapping:
+
+- **Enrollment:** `participants.enrollment_code`, `enrollment_code_used_at` and `token_sha256`.
+- **Upload state:** `sync_batches.status`, `error_code`, `error_message`, `completed_at` and `job_id`, plus the `sync_batch_files` table for the declared files. Batches stored before the migration are marked `processed`.
+- **Device session:** `sync_batches.device_session_id`.
+- **Event kinds:** `boot`, `rtc_set`, `rtc_lost` and `camera_boot` on `device_events.kind`.
+- **Sensor types:** the migration inserts the pendant's `sensor_types` (`temperature_c`, `humidity_pct`, `co_raw`, `flammable_gas_raw`, `sound_level_raw`, `battery_mv`), so they exist without the demo seed.
+
+Still open, as application logic rather than schema: ingestion needs a `device_sensors` row per pendant component and a `sensor_series` (period 1 s) per participant and sensor, created when a device is registered or assigned.
 
 ## Consequences
 
 - The phone encodes video. This replaces decision 3 of [0001](./0001-prototype-hardware-architecture.md) ("the worker builds the MP4"): uploading thousands of JPEGs is slower and costlier than one H.264 file, and the frame timestamps survive in `frames.csv` and the VFR timeline.
 - Evidence offsets (`observation_evidence.start_second/end_second`) are seconds on the `video.mp4` timeline, which maps 1:1 to device time through `frames.csv`.
-- MON-11's mock API and the Android app can be built against §2 now. The real routes need the phase-2 migration first.
+- MON-11's mock API and the Android app can be built against §2 now. The real routes can use the phase-2 columns (§8) from migration 0003 on.
 - Storage needs `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`. Add them to `.env.example` and `render.yaml` with the implementation.
 - `sensors.csv` and `events.csv` are filtered by the phone, so they are no longer byte-identical to the device files; their hashes in the manifest are of the uploaded files.
 - This bundle replaces the `clip_manifest` contract in AGENTS.md §5: an upload's video is the clip (`media_assets`).

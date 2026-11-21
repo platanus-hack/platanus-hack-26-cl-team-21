@@ -203,7 +203,7 @@ export async function getParticipantTimeline(studyCode: string, pseudonym: strin
   };
 }
 
-const SENSOR_ORDER = ["temperature_c", "humidity_pct", "sound_level_raw", "co_raw", "flammable_gas_raw", "battery_pct"];
+const SENSOR_ORDER = ["temperature_c", "humidity_pct", "sound_level_raw", "co_raw", "flammable_gas_raw", "battery_mv"];
 
 function sortSensors(stats: SensorStat[]) {
   const rank = (key: string) => (SENSOR_ORDER.includes(key) ? SENSOR_ORDER.indexOf(key) : SENSOR_ORDER.length);

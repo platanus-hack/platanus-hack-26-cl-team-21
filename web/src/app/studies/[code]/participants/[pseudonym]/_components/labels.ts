@@ -112,7 +112,7 @@ const SENSORS: Record<string, { label: string; unit: string; decimals: number }>
   sound_level_raw: { label: "Nivel de sonido (KY-037)", unit: "valor crudo, no son dB", decimals: 0 },
   co_raw: { label: "CO (MQ-7)", unit: "valor crudo, sin calibrar", decimals: 0 },
   flammable_gas_raw: { label: "Gas inflamable / humo (MQ-2)", unit: "valor crudo, sin calibrar", decimals: 0 },
-  battery_pct: { label: "Batería del dispositivo (estimada por voltaje)", unit: "%", decimals: 0 },
+  battery_mv: { label: "Voltaje de batería (pack 2S)", unit: "mV", decimals: 0 },
 };
 
 export const sensorInfo = (key: string, unit: string) => SENSORS[key] ?? { label: key, unit, decimals: 1 };

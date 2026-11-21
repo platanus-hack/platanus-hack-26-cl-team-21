@@ -19,8 +19,19 @@ export const participants = pgTable(
     status: text({ enum: PARTICIPANT_STATUS }).notNull().default("enrolled"),
     enrolledAt: createdAt(),
     withdrawnAt: tstz(),
+    // Single-use code the research team hands out ('EAT-001-P01'); the app redeems it once.
+    enrollmentCode: text().unique(),
+    enrollmentCodeUsedAt: tstz(),
+    // sha256 (hex) of the opaque bearer token returned on enrollment; the token itself is never
+    // stored. Revoking it means setting this to null.
+    tokenSha256: text().unique(),
   },
-  (t) => [unique().on(t.studyId, t.pseudonym), oneOf("participants_status_check", t.status, PARTICIPANT_STATUS)],
+  (t) => [
+    unique().on(t.studyId, t.pseudonym),
+    oneOf("participants_status_check", t.status, PARTICIPANT_STATUS),
+    check("participants_enrollment_code_used_check", sql`${t.enrollmentCodeUsedAt} is null or ${t.enrollmentCode} is not null`),
+    check("participants_token_sha256_check", sql`${t.tokenSha256} ~ '^[0-9a-f]{64}$'`),
+  ],
 );
 
 // Real identity lives in its own schema so it can get its own grants (Ley 21.719): analysts and

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "./client";
 import {
   type COVERAGE_STATUS,
@@ -21,7 +21,6 @@ import {
   protocolVersions,
   researchers,
   sensorSeries,
-  sensorTypes,
   studies,
   studyMembers,
   syncBatches,
@@ -54,19 +53,22 @@ const DAY_SEGMENTS: { from: string; to: string; status?: CoverageStatus; slot?: 
   { from: "21:30", to: "24:00", status: "device_off" },
 ];
 
-const PARTICIPANTS: { pseudonym: string; deviceSerial: string; notObserved: Partial<Record<Slot, CoverageStatus>>[] }[] = [
+const PARTICIPANTS: { pseudonym: string; enrollmentCode: string; deviceSerial: string; notObserved: Partial<Record<Slot, CoverageStatus>>[] }[] = [
   {
     pseudonym: "P-001",
+    enrollmentCode: "EAT-001-P01", // unused, so the app can enroll against a seeded backend (as in tools/mock-api)
     deviceSerial: "OLM-DEMO-01",
     notObserved: [{ morning: "excluded_by_participant", night: "low_battery" }, { afternoon: "no_upload" }],
   },
   {
     pseudonym: "P-002",
+    enrollmentCode: "EAT-001-P02",
     deviceSerial: "OLM-DEMO-02",
     notObserved: [{ morning: "privacy_switch", night: "low_quality" }, { lunch: "excluded_by_participant" }],
   },
   {
     pseudonym: "P-003",
+    enrollmentCode: "EAT-001-P03",
     deviceSerial: "OLM-DEMO-03",
     notObserved: [{ night: "low_battery" }, { lunch: "privacy_switch", morning: "low_quality" }],
   },
@@ -103,13 +105,14 @@ const REVIEWS = [
   { pseudonym: "P-002", day: 0, episode: "lunch", decision: "corrected" as const, note: "Episode ends later; dessert visible." },
 ];
 
+// sensor_types rows come from migration 0003 (the sensors the pendant reports).
 const SENSORS = [
-  { key: "temperature_c", unit: "C", component: "DHT11", description: "Ambient temperature (DHT11)" },
-  { key: "humidity_pct", unit: "%", component: "DHT11", description: "Relative humidity (DHT11)" },
-  { key: "co_raw", unit: "raw", component: "MQ-7", description: "CO, relative ADC reading (MQ-7), not calibrated" },
-  { key: "flammable_gas_raw", unit: "raw", component: "MQ-2", description: "Flammable gas/smoke, relative ADC reading (MQ-2), not calibrated" },
-  { key: "sound_level_raw", unit: "raw", component: "KY-037", description: "Sound level, relative ADC reading (KY-037), not calibrated dB" },
-  { key: "battery_pct", unit: "%", component: "2S-voltage-divider", description: "Battery charge estimated from pack voltage" },
+  { key: "temperature_c", component: "DHT11" },
+  { key: "humidity_pct", component: "DHT11" },
+  { key: "co_raw", component: "MQ-7" },
+  { key: "flammable_gas_raw", component: "MQ-2" },
+  { key: "sound_level_raw", component: "KY-037" },
+  { key: "battery_mv", component: "2S-voltage-divider" },
 ] as const;
 
 function seedId(name: string) {
@@ -169,8 +172,8 @@ function sensorValue(sensorKey: (typeof SENSORS)[number]["key"], minuteOfDay: nu
       return round(190 + (nearMeal ? 45 : 0) + 15 * noise(seed));
     case "sound_level_raw":
       return round(420 + (nearMeal ? 110 : 0) + 90 * noise(seed));
-    case "battery_pct":
-      return Math.max(5, round(100 - (minuteOfDay - 480) * 0.11));
+    case "battery_mv":
+      return Math.max(6600, round(8300 - (minuteOfDay - 480) * 1.6));
   }
 }
 
@@ -225,14 +228,20 @@ async function seedProtocol(tx: Tx, studyId: string, researcherId: string) {
   return { protocolVersionId, eventTypeIds };
 }
 
-async function seedParticipant(tx: Tx, studyId: string, protocolVersionId: string, pseudonym: string, deviceSerial: string) {
+async function seedParticipant(
+  tx: Tx,
+  studyId: string,
+  protocolVersionId: string,
+  { pseudonym, enrollmentCode, deviceSerial }: (typeof PARTICIPANTS)[number],
+) {
   const participantId = seedId(`participant:${pseudonym}`);
   const deviceId = seedId(`device:${deviceSerial}`);
   const studyStart = new Date(`${DAYS[0]}T00:00:00${LOCAL_OFFSET}`);
   await tx
     .insert(participants)
-    .values({ id: participantId, studyId, pseudonym, status: "active", enrolledAt: new Date(`2026-11-18T10:00:00${LOCAL_OFFSET}`) })
-    .onConflictDoNothing();
+    .values({ id: participantId, studyId, pseudonym, enrollmentCode, status: "active", enrolledAt: new Date(`2026-11-18T10:00:00${LOCAL_OFFSET}`) })
+    // Databases seeded before enrollment codes existed get them too; a code is never replaced.
+    .onConflictDoUpdate({ target: participants.id, set: { enrollmentCode }, where: isNull(participants.enrollmentCode) });
   await tx
     .insert(consents)
     .values({
@@ -271,13 +280,25 @@ async function seedParticipant(tx: Tx, studyId: string, protocolVersionId: strin
   return { participantId, deviceId, seriesIds };
 }
 
+// Databases seeded before migration 0003 have a battery_pct series per demo device; the device
+// reports battery_mv. Remove those rows (by their fixed seed ids) so old and new seeds converge.
+async function dropLegacyBatterySeries(tx: Tx) {
+  const ids = sql.join(
+    PARTICIPANTS.map(({ deviceSerial }) => sql`${seedId(`device-sensor:${deviceSerial}:battery_pct`)}::uuid`),
+    sql`, `,
+  );
+  const series = sql`select id from sensor_series where device_sensor_id in (${ids})`;
+  await tx.execute(sql`delete from sensor_hourly where series_id in (${series})`);
+  await tx.execute(sql`delete from sensor_chunks where series_id in (${series})`);
+  await tx.execute(sql`delete from sensor_series where device_sensor_id in (${ids})`);
+  await tx.execute(sql`delete from device_sensors where id in (${ids})`);
+  await tx.execute(sql`delete from sensor_types where key = 'battery_pct' and not exists (select 1 from device_sensors where sensor_type_key = 'battery_pct')`);
+}
+
 async function seed() {
   await db.transaction(async (tx) => {
+    await dropLegacyBatterySeries(tx);
     const { researcherId, studyId } = await seedStudy(tx);
-    await tx
-      .insert(sensorTypes)
-      .values(SENSORS.map(({ key, unit, description }) => ({ key, unit, description })))
-      .onConflictDoNothing();
     const { protocolVersionId, eventTypeIds } = await seedProtocol(tx, studyId, researcherId);
 
     const runId = seedId("pipeline-run:1");
@@ -297,8 +318,9 @@ async function seed() {
       })
       .onConflictDoNothing();
 
-    for (const [participantIndex, { pseudonym, deviceSerial, notObserved }] of PARTICIPANTS.entries()) {
-      const { participantId, deviceId, seriesIds } = await seedParticipant(tx, studyId, protocolVersionId, pseudonym, deviceSerial);
+    for (const [participantIndex, participant] of PARTICIPANTS.entries()) {
+      const { pseudonym, deviceSerial, notObserved } = participant;
+      const { participantId, deviceId, seriesIds } = await seedParticipant(tx, studyId, protocolVersionId, participant);
       const readings = Object.fromEntries(SENSORS.map((sensor) => [sensor.key, [] as Reading[]]));
 
       for (const [dayIndex, day] of DAYS.entries()) {
@@ -319,6 +341,9 @@ async function seed() {
             payloadSha256: sha256(batchId),
             rawStorageKey: `demo/${pseudonym}/${day}/sync.json`,
             receivedAt: localTime(day, 1380),
+            deviceSessionId: `${deviceSerial}-${localTime(day, minutesOf("08:00")).getTime() / 1000}`,
+            status: "processed",
+            completedAt: localTime(day, 1380),
           })
           .onConflictDoNothing();
 

@@ -248,3 +248,47 @@ INSERT INTO results (r) SELECT pg_temp.expect_error($q$UPDATE observations SET s
 INSERT INTO device_events (id, device_id, occurred_at, kind, firmware_version)
 VALUES ('00000000-0000-0000-0000-0000000000c9', '00000000-0000-0000-0000-0000000000d2', '2026-11-20 12:00-03', 'privacy_switch_on', 'fw-1.0');
 INSERT INTO results (r) SELECT pg_temp.expect_error($q$INSERT INTO device_events (id, device_id, occurred_at, kind, firmware_version) VALUES (gen_random_uuid(),'00000000-0000-0000-0000-0000000000d2',now(),'mood_change','fw-1.0')$q$, 'device_events_kind_check', 'device event kind outside the vocabulary');
+INSERT INTO device_events (id, device_id, occurred_at, kind, firmware_version)
+SELECT gen_random_uuid(), '00000000-0000-0000-0000-0000000000d2', '2026-11-20 12:05-03', kind, 'fw-1.0'
+FROM unnest(ARRAY['boot', 'rtc_set', 'rtc_lost', 'camera_boot']) AS kind;
+INSERT INTO results (r) SELECT pg_temp.expect(true, 'firmware event kinds (boot, rtc_set, rtc_lost, camera_boot) are accepted');
+
+-- ---------- enrollment ----------
+UPDATE participants SET enrollment_code = 'RULES-TEST-P01' WHERE id = '00000000-0000-0000-0000-0000000000f1';
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$UPDATE participants SET enrollment_code = 'RULES-TEST-P01' WHERE id = '00000000-0000-0000-0000-0000000000f2'$q$, 'duplicate key', 'enrollment codes are unique');
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$UPDATE participants SET enrollment_code_used_at = now() WHERE id = '00000000-0000-0000-0000-0000000000f2'$q$, 'participants_enrollment_code_used_check', 'used_at requires an enrollment code');
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$UPDATE participants SET token_sha256 = 'not-a-hash' WHERE id = '00000000-0000-0000-0000-0000000000f1'$q$, 'participants_token_sha256_check', 'token hash must be a hex sha256');
+UPDATE participants SET enrollment_code_used_at = now(), token_sha256 = repeat('ab', 32) WHERE id = '00000000-0000-0000-0000-0000000000f1';
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$UPDATE participants SET token_sha256 = repeat('ab', 32) WHERE id = '00000000-0000-0000-0000-0000000000f2'$q$, 'duplicate key', 'token hashes are unique');
+
+-- ---------- uploads ----------
+INSERT INTO sync_batches (id, device_id, participant_id, firmware_version, recorded_from, recorded_to, payload_sha256, device_session_id)
+VALUES ('00000000-0000-0000-0000-0000000000e9', '00000000-0000-0000-0000-0000000000d2', '00000000-0000-0000-0000-0000000000f1', 'fw-1.0',
+        '2026-11-20 14:00-03', '2026-11-20 14:30-03', repeat('cd', 32), 'a1b2c3-1795280400');
+INSERT INTO results (r) SELECT pg_temp.expect(
+  (SELECT status = 'awaiting_files' AND completed_at IS NULL FROM sync_batches WHERE id = '00000000-0000-0000-0000-0000000000e9'),
+  'a new upload starts awaiting files');
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$UPDATE sync_batches SET status = 'uploaded', completed_at = now() WHERE id = '00000000-0000-0000-0000-0000000000e9'$q$, 'sync_batches_status_check', 'upload status outside the vocabulary');
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$UPDATE sync_batches SET status = 'processing' WHERE id = '00000000-0000-0000-0000-0000000000e9'$q$, 'sync_batches_completed_check', 'processing requires completed_at');
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$UPDATE sync_batches SET completed_at = now() WHERE id = '00000000-0000-0000-0000-0000000000e9'$q$, 'sync_batches_completed_check', 'awaiting_files has no completed_at');
+INSERT INTO jobs (type, payload) VALUES ('process_session', '{"upload_id":"00000000-0000-0000-0000-0000000000e9"}');
+UPDATE sync_batches SET status = 'processing', completed_at = now(), job_id = (SELECT max(id) FROM jobs)
+WHERE id = '00000000-0000-0000-0000-0000000000e9';
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$UPDATE sync_batches SET status = 'failed' WHERE id = '00000000-0000-0000-0000-0000000000e9'$q$, 'sync_batches_error_check', 'failed requires an error code');
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$UPDATE sync_batches SET status = 'failed', error_code = 'oops' WHERE id = '00000000-0000-0000-0000-0000000000e9'$q$, 'sync_batches_error_code_check', 'error code outside the vocabulary');
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$UPDATE sync_batches SET error_code = 'files_mismatch' WHERE id = '00000000-0000-0000-0000-0000000000e9'$q$, 'sync_batches_error_check', 'only a failed upload has an error code');
+UPDATE sync_batches SET status = 'failed', error_code = 'files_mismatch', error_message = 'video.mp4 sha256 differs'
+WHERE id = '00000000-0000-0000-0000-0000000000e9';
+INSERT INTO results (r) SELECT pg_temp.expect(true, 'processing -> failed with an error code is allowed');
+INSERT INTO sync_batch_files (batch_id, kind, sha256, size_bytes, content_type) VALUES
+  ('00000000-0000-0000-0000-0000000000e9', 'video', repeat('01', 32), 18234567, 'video/mp4'),
+  ('00000000-0000-0000-0000-0000000000e9', 'manifest', repeat('cd', 32), 2048, 'application/json');
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$INSERT INTO sync_batch_files (batch_id, kind, sha256, size_bytes, content_type) VALUES ('00000000-0000-0000-0000-0000000000e9','video',repeat('02',32),1,'video/mp4')$q$, 'duplicate key', 'one declared file per kind and upload');
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$INSERT INTO sync_batch_files (batch_id, kind, sha256, size_bytes, content_type) VALUES ('00000000-0000-0000-0000-0000000000e9','audio',repeat('02',32),1,'video/mp4')$q$, 'sync_batch_files_kind_check', 'file kind outside the vocabulary');
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$INSERT INTO sync_batch_files (batch_id, kind, sha256, size_bytes, content_type) VALUES ('00000000-0000-0000-0000-0000000000e9','frames',repeat('02',32),1,'text/plain')$q$, 'sync_batch_files_content_type_check', 'content type outside the vocabulary');
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$INSERT INTO sync_batch_files (batch_id, kind, sha256, size_bytes, content_type) VALUES ('00000000-0000-0000-0000-0000000000e9','frames',repeat('02',32),1,'video/mp4')$q$, 'sync_batch_files_kind_content_type_check', 'content type must match the file kind');
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$INSERT INTO sync_batch_files (batch_id, kind, sha256, size_bytes, content_type) VALUES ('00000000-0000-0000-0000-0000000000e9','frames','ABC',1,'text/csv')$q$, 'sync_batch_files_sha256_check', 'declared sha256 must be lowercase hex');
+INSERT INTO results (r) SELECT pg_temp.expect_error($q$INSERT INTO sync_batch_files (batch_id, kind, sha256, size_bytes, content_type) VALUES ('00000000-0000-0000-0000-0000000000e9','frames',repeat('02',32),0,'text/csv')$q$, 'sync_batch_files_size_check', 'declared size must be positive');
+INSERT INTO results (r) SELECT pg_temp.expect(
+  (SELECT count(*) = 6 FROM sensor_types WHERE key IN ('temperature_c','humidity_pct','co_raw','flammable_gas_raw','sound_level_raw','battery_mv')),
+  'the pendant sensor types exist without the seed');
