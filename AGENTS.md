@@ -54,7 +54,7 @@ Full proposal in [`hardware/README.md`](./hardware/README.md); decision record i
 - **The ESP32-CAM** saves JPEG frames (2 fps, VGA) plus `frames.csv`, `sensors.csv`, `events.csv` and `session.json` per session on the microSD. It exposes a token-protected **HTTP API on the local network**: it joins the strongest known Wi-Fi (lab, home, phone hotspot), falls back to its own AP, and is reachable at `olm-<id>.local`. **No BLE in v0.**
 - **Audio recording is undecided:** the KY-037 only gives a relative level, and the loose electret capsule needs a preamp plus a recorder. Options are in `hardware/README.md` §2. The phone microphone is ruled out because it breaks standardization.
 - **The privacy switch physically cuts the pendant's power**, and the hub logs the interval.
-- Open risks: GPIO12 strapping on the ESP32-CAM, brownouts when Wi-Fi starts, no IMU (no wear detection), and a 260 mAh battery that lasts ~18 min (bench and demo run from a USB power bank).
+- Open risks: GPIO12 strapping on the ESP32-CAM, brownouts when Wi-Fi starts, no IMU (no wear detection), and a 260 mAh battery whose label implies a single 3.7 V cell that the LM2596 can't turn into 5 V (bench and demo run from a USB power bank).
 
 ### Android (`android/`)
 

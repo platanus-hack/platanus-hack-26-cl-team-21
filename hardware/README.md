@@ -79,7 +79,7 @@ BLE is a stretch goal.
 | Part | Qty | Role | Notes |
 |---|---|---|---|
 | ESP32-CAM (AI-Thinker, OV2640) + ESP32-CAM-MB programmer | 1 | camera, SD, Wi-Fi | The MB board is only for flashing/USB serial; in the box it's powered via the 5V pin |
-| Arduino Uno | 1 | sensor hub | Powered at its **5V pin** from the buck (bypasses the onboard regulator) |
+| Arduino Uno | 1 | sensor hub | Powered at its **5V pin** from the 5 V rail (bypasses the onboard regulator) |
 | microSD 64 GB | 1 | storage | **Format FAT32** (64 GB cards ship as exFAT; the ESP32 SD library needs FAT32) |
 | DHT11 | 1 | temperature / humidity | ±2 °C, ±5 % RH, ≤1 Hz; keep it away from the MQ heaters and the body |
 | MQ-7 module | 1 | CO (relative) | Used at constant 5 V: **relative readings only** (see §8) |
@@ -89,12 +89,13 @@ BLE is a stretch goal.
 | Buzzer TMB12A05 | 1 | local notifications | **Active** 5 V buzzer (~30 mA): beeps on DC, `BUZZER_PASSIVE 0` |
 | Push button | 1 | event marker | To GND, internal pull-up |
 | Mini switch | 1 | **privacy switch** | Between the 5 V rail and the ESP32-CAM: the camera is physically unpowered. The Uno senses the switched side |
-| LM2596 buck module | 1 | 7.4 V → 5 V | **Set to 5.0–5.1 V with a multimeter before connecting anything** |
-| 2S Li-ion/LiPo 7.4 V battery | 1 | power | Not recharged during the hackathon: start the demo with a full battery and measure runtime early (§5) |
+| USB power bank (5 V, ≥2 A) | 1 | **main power** for bench work and the demo | Wired straight to the 5 V rail (cut-open USB cable or USB breakout) |
+| LM2596 buck module | 1 | battery → 5 V | Only useful with a 2S (7.4 V) pack: a buck can't make 5 V from 3.7 V. **Set to 5.0–5.1 V with a multimeter before connecting anything** |
+| Li-ion/LiPo battery, 260 mAh, 0.96 Wh | 1 | untethered segment (if usable) | 0.96 Wh ÷ 0.26 Ah = **3.7 V, i.e. a single cell**, not the 7 V we assumed. **Measure it with a multimeter** (§5). Not recharged during the hackathon |
 | Red LED + 330 Ω | 1 | recording indicator (front face) | Driven by the Uno, only while ESP32-CAM reports active capture |
-| Resistors 10 kΩ ×2 | 1 pair | battery divider | 8.4 V max → 4.2 V at A3 |
+| Resistors 100 kΩ ×2 + 100 nF | 1 set | battery divider | Halves the battery voltage at A3 (≤4.2 V for 2S, ≤2.1 V for 1S). Tapped **after** the main switch |
 | Resistors 1 kΩ + 2 kΩ | 1 pair | UART level shift (Uno 5 V → ESP 3.3 V) | |
-| Resistor 10 kΩ ×2 | 1 pair | privacy-sense divider (5 V → 2.5 V) | Optional; 5 V into a Uno pin is fine, the divider protects if the rail misbehaves |
+| Resistor 100 kΩ | 1 | privacy-sense pull-down on D4 | Keeps D4 LOW while the camera side is off (the big capacitor discharges slowly). **No divider**: 2.5 V would be an undefined logic level |
 | Raspberry Pi | (spare) | fallback only | If the ESP32-CAM can't keep up; costs ~3× the power |
 
 ## 4. Wiring
@@ -102,16 +103,20 @@ BLE is a stretch goal.
 ### 4.1 Power
 
 ```text
-Battery + ── main switch (optional) ── LM2596 IN+        LM2596 OUT+ (5.0 V) ──┬── Uno 5V pin
-Battery − ─────────────────────────── LM2596 IN−         LM2596 OUT− ──────────┼── common GND
-                                                                                ├── MQ-7, MQ-2, DHT11, KY-037, RTC VCC
-                                                                                └── PRIVACY SWITCH ── ESP32-CAM 5V
-Battery + ── 10 kΩ ──┬── 10 kΩ ── GND
-                     └── Uno A3   (battery voltage / 2)
+Power bank 5 V (demo/bench) ───────────────────────────────┐
+  or: Battery + ── main switch ──┬── LM2596 IN+ ── OUT+ ───┤ (2S pack only)
+                                 └── 100k ─┬─ 100k ── GND  │
+                                           ├─ 100 nF ─ GND │
+                                           └─ Uno A3       │
+                                                           ├── Uno 5V pin
+                         common GND ───────────────────────┼── MQ-7, MQ-2, DHT11, KY-037, RTC VCC
+                                                           └── PRIVACY SWITCH ──┬── ESP32-CAM 5V (+ 1000 µF)
+                                                                                └── Uno D4 (100k pull-down to GND)
 ```
 
 - **All grounds common.** Without a shared GND the UART and the analog readings won't work.
-- Never power the Uno from USB and the buck at the same time while flashing. Unplug the battery first, or disconnect the buck's 5 V from the Uno.
+- The battery divider sits **after** the main switch: no constant drain while stored, and no battery voltage on A3 while the Uno is unpowered.
+- Never power the Uno from USB and the 5 V rail at the same time while flashing. Disconnect the rail first.
 - The ESP32-CAM browns out with weak supplies (it resets when Wi-Fi starts). Put a **470–1000 µF capacitor** across the ESP32-CAM's 5 V/GND pins.
 
 ### 4.2 Arduino Uno pinout
@@ -121,11 +126,11 @@ Battery + ── 10 kΩ ──┬── 10 kΩ ── GND
 | A0 | MQ-7 `AO` | |
 | A1 | MQ-2 `AO` | |
 | A2 | KY-037 `AO` | Adjust the module pot so that silence reads ~mid-scale |
-| A3 | battery divider midpoint | `V_batt = adc * 5.0 / 1023 * 2` |
+| A3 | battery divider midpoint | `V_batt = adc * 5.0 / 1023 * 2`. Below 2.5 V the firmware assumes external power and skips battery alarms |
 | A4 / A5 | free | |
 | D2 | DHT11 `DATA` | 10 kΩ pull-up to 5 V if the module doesn't have one |
 | D3 | event button → GND | `INPUT_PULLUP` |
-| D4 | privacy sense: ESP32-CAM side of the switch (via 10k/10k divider) | HIGH = camera powered = privacy **off** |
+| D4 | privacy sense: ESP32-CAM side of the switch, **direct**, with 100 kΩ to GND | HIGH = camera powered = privacy **off** |
 | D5 | buzzer `+` | |
 | D6 | recording LED (front) via 330 Ω | ON only while capture heartbeats arrive |
 | D8 | ESP32-CAM GPIO12 (ESP TX) | SoftwareSerial RX. **No pull-up** (see §4.4) |
@@ -168,24 +173,20 @@ GPIO12 selects the flash voltage at boot: if it is HIGH during reset, the ESP32 
 | DHT11 + KY-037 + RTC + LED + buzzer | 15 mA | 40 mA |
 | **Total** | **~545 mA (2.7 W)** | **~840 mA** |
 
-At 7.4 V with ~85 % buck efficiency, the battery draws **~0.45 A**. **Our battery is 260 mAh (0.96 Wh)**, which gives:
+**The battery label (260 mAh, 0.96 Wh) implies a single 3.7 V cell**, not the 7 V pack we assumed. Measure it before wiring anything:
 
-| Configuration | Load | Runtime |
-|---|---:|---:|
-| Everything on | ~2.7 W | **~18 min** |
-| MQ sensors unplugged | ~1.2 W | ~40 min |
+- **~3.7–4.2 V (1S):** the LM2596 can't produce 5 V from it (a buck only steps down). Without a boost converter (none available), the battery **can't power the device**. The power bank is the only supply. Set `BATT_CELLS 1`.
+- **~7.4–8.4 V (2S):** the buck works. With 0.96 Wh and ~3.2 W drawn (2.7 W load at ~85 % efficiency), runtime is **~18 min** with everything on, or ~40 min with the MQ sensors unplugged. Peaks of ~0.7 A are a lot for such a small pack, so expect sag. Set `BATT_CELLS 2`.
 
-There's a second problem: 0.45 A typical and ~0.7 A peaks are 1.7–2.6 C for such a small cell. The voltage will sag, and its protection circuit may cut out exactly when Wi-Fi starts.
+**Plan:** bench work and the demo run from a **USB power bank (5 V, ≥2 A) wired straight to the 5 V rail**. If the MQ sensors aren't needed in a session, unplug their 5 V: they're 55 % of the load.
 
-**Recommendation:** run the bench work and the demo from a **USB power bank (5 V, ≥2 A) wired straight to the 5 V rail**, bypassing the buck, with a USB cable cut open or a USB breakout. Keep the 260 mAh battery for a short untethered segment of the demo (≤15 min, starting full). If the MQ sensors aren't needed in a session, unplug their 5 V: they're 55 % of the load.
-
-The Uno measures battery voltage on A3 and reports it every second. Thresholds for a 2S pack: **< 7.0 V = low** (buzzer warning, `low_battery` event), **< 6.6 V = critical** (stop capture cleanly).
+The Uno reports battery voltage on A3 every second. Thresholds scale with `BATT_CELLS`: **< 3.5 V/cell = low** (`LOW_BATT`, buzzer), **< 3.3 V/cell = critical** (`CRIT_BATT`, the ESP32-CAM closes the session). Below 2.5 V on the divider there is no battery (power bank): `batt_mv` is left empty and no alarms fire.
 
 ## 6. Clock and synchronization
 
 - The **RTC on the Uno is the master clock.** Every sensor line carries `rtc_epoch` (seconds) and `uptime_ms`.
-- The ESP32-CAM keeps an offset between the Uno's RTC time and its own `millis()`, refreshed with every sensor line. Each frame is stamped with `rtc_epoch_ms`.
-- **Time sync:** the Android app calls `POST /time` on the ESP32-CAM, which forwards `C,TIME,<epoch>` to the Uno. The Uno sets the RTC and emits an `E,RTC_SET,<old_epoch>` event, so the backend knows the drift.
+- The ESP32-CAM maps the Uno's RTC time onto its own `millis()`. Each line's epoch is whole seconds read slightly before sending, so every sample is a lower bound of the true offset: the firmware keeps the **maximum over a sliding 10-minute window** (two buckets, so slow drift is tracked), and resets the estimate on jumps of more than 2 s (first fix, `RTC_SET`). Expected accuracy is **~0.1–0.2 s**. Each frame is stamped with `rtc_epoch_ms`.
+- **Time sync:** the Android app calls `POST /time` on the ESP32-CAM, which queues `C,TIME,<epoch>` for the Uno. The Uno sets the RTC and emits an `E,RTC_SET,<old_epoch>` event, so the backend knows the drift. The DS1302 boots with an invalid date: until the first sync, epochs are empty/0 and frames only carry uptime.
 - All device times are **UTC epoch**. Time zones are applied in the backend.
 
 ## 7. Interfaces
@@ -198,9 +199,9 @@ Each line is `<payload>*<checksum>\n`, where the checksum is the XOR of all payl
 
 | Line | When | Fields |
 |---|---|---|
-| `S,<epoch>,<uptime_ms>,<temp_c>,<rh_pct>,<mq7>,<mq2>,<sound_p2p>,<batt_mv>` | every 1 s | MQ and sound values are raw ADC (0–1023). `temp_c`/`rh_pct` are empty if the DHT read failed |
-| `E,<epoch>,<uptime_ms>,<type>[,<value>]` | on event | `type` ∈ `BOOT`, `BUTTON`, `PRIVACY_ON`, `PRIVACY_OFF`, `RTC_SET`, `RTC_LOST`, `LOW_BATT`, `CRIT_BATT`, `DHT_FAIL` |
-| `A,<cmd>,OK` | after a command | acknowledgement |
+| `S,<epoch>,<uptime_ms>,<temp_c>,<rh_pct>,<mq7>,<mq2>,<sound_p2p>,<batt_mv>` | every 1 s | MQ and sound values are raw ADC (0–1023). `temp_c`/`rh_pct` are empty if the DHT read failed; `batt_mv` is empty on external power |
+| `E,<epoch>,<uptime_ms>,<type>[,<value>]` | on event | `type` ∈ `BOOT`, `BUTTON`, `PRIVACY_ON`, `PRIVACY_OFF`, `RTC_SET`, `RTC_LOST`, `LOW_BATT`, `CRIT_BATT`, `DHT_FAIL` (on the transition to failing). For replayed `PRIVACY_ON`/`PRIVACY_OFF`, `<value>` is the **real switch time** (epoch); `<epoch>` is when the line was sent |
+| `A,<cmd>,OK` | after `TIME`, `BUZZ`, `HELLO` | acknowledgement. The ESP32-CAM resends each queued command every 300 ms until its ack arrives (up to 10 tries; drops are counted in `/status`) |
 
 **ESP32-CAM → Uno**
 
@@ -209,9 +210,11 @@ Each line is `<payload>*<checksum>\n`, where the checksum is the XOR of all payl
 | `C,REC,1` | capture heartbeat, sent every second while capturing. The Uno turns the recording LED off if no heartbeat arrives for 3 s |
 | `C,TIME,<epoch>` | set the RTC |
 | `C,BUZZ,<pattern>` | `pattern` ∈ `SHORT`, `DOUBLE`, `LONG` |
-| `C,HELLO` | sent by the ESP32-CAM on boot; the Uno replies with its last `PRIVACY_ON` epoch so the gap can be logged |
+| `C,HELLO` | sent by the ESP32-CAM on boot; the Uno replays the last privacy interval (`PRIVACY_ON`/`PRIVACY_OFF` with their real times) |
 
-**Privacy switch behavior.** While privacy is on, the Uno stops transmitting and holds its TX line LOW, so it doesn't back-power the ESP32-CAM through its RX pin. The switch cuts the ESP32-CAM's power, so the camera is physically off and nothing is recorded during that time. The Uno timestamps `PRIVACY_ON`/`PRIVACY_OFF` and keeps the last interval in EEPROM. When the ESP32-CAM boots it sends `C,HELLO` and the Uno replays the interval, which gets written to `events.csv`. The backend turns it into a `coverage_interval` with status `privacy_switch`.
+`REC` heartbeats are fire-and-forget (a lost one is covered by the 3 s timeout). `TIME` and `BUZZ` arguments are validated by the HTTP API before queueing (10-digit epoch; `SHORT`/`DOUBLE`/`LONG`), so no text can be injected into the line protocol.
+
+**Privacy switch behavior.** While privacy is on, the Uno stops transmitting and holds its TX line LOW, so it doesn't back-power the ESP32-CAM through its RX pin. The switch cuts the ESP32-CAM's power, so the camera is physically off and nothing is recorded. The Uno stores the `PRIVACY_ON` and `PRIVACY_OFF` times in EEPROM. When the camera boots again it **resumes the interrupted session** (see §7.2) and sends `C,HELLO`; the Uno replays the interval into that session's `events.csv`. The backend turns it into a `coverage_interval` with status `privacy_switch`. Known limit: if the RTC was never synced, the stored times are 0 and the interval can only be inferred from the frame gap.
 
 ### 7.2 Files on the microSD
 
@@ -224,19 +227,19 @@ Each line is `<payload>*<checksum>\n`, where the checksum is the XOR of all payl
   events.csv                     rtc_epoch,uptime_ms,type,value
 ```
 
-Sensor lines and events are only written while a session is active; events outside a session go to `/events-idle.csv`. These files map to the contracts in `AGENTS.md` §5 (`sensor_sample`, `device_event`, `coverage_interval`). The Android app or the worker converts them; the device keeps a flat CSV format so it stays simple and robust.
+Sensor lines and events are only written while a session is active; events outside a session go to `/events-idle.csv`. The active session id is persisted in `/current_session`: after any reset (privacy switch, brownout) the camera resumes that session, continues the frame numbering and logs a `CAM_BOOT,resumed` event once the clock is known. `/capture/stop` closes it. If two sessions would get the same id, a `-2`, `-3`… suffix is added. The worker should derive frame counts and end times from `frames.csv` rather than `session.json`, which is only rewritten at start and stop. These files map to the contracts in `AGENTS.md` §5 (`sensor_sample`, `device_event`, `coverage_interval`). The Android app or the worker converts them; the device keeps a flat CSV format so it stays simple and robust.
 
 ### 7.3 HTTP API (ESP32-CAM, for the Android app)
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/status` | `device_id`, firmware, capturing, session_id, frames, SD free, last sensor line, battery mV, RTC epoch |
-| POST | `/time?epoch=<s>` | sync the RTC |
+| GET | `/status` | `device_id`, firmware, IP, capturing, session_id, frames, SD free, clock, battery mV (-1 = external power), last sensor line, pending/dropped commands, last ack, bad checksums |
+| POST | `/time?epoch=<s>` | sync the RTC (10-digit unix seconds). Returns 202 queued; confirmed by `last_ack` and the `RTC_SET` event |
 | POST | `/capture/start?protocol=<v>` / `/capture/stop` | start or stop a session |
-| GET | `/sessions` | list sessions with sizes |
+| GET | `/sessions` | list session ids and which one is active |
 | GET | `/sessions/<id>/<file>` | download `session.json`, `frames.csv`, `sensors.csv`, `events.csv` |
 | GET | `/sessions/<id>/frames/<n>.jpg` | download a frame |
-| DELETE | `/sessions/<id>` | remove a session after a confirmed upload |
+| DELETE | `/sessions/<id>` | remove a session after a confirmed upload. The id must be lowercase `[0-9a-z-]`, exist, and not be active |
 | POST | `/buzz?pattern=<p>` | test or trigger a notification |
 
 All endpoints require `Authorization: Bearer <API_TOKEN>`. Wi-Fi: the device joins the strongest of the known networks in `secrets.h` (not committed), or falls back to AP mode `OLM-<device_id>`. It's reachable at `http://olm-<device_id>.local` or its IP (printed on the serial log and shown in `/status`).
@@ -254,7 +257,7 @@ All endpoints require `Authorization: Bearer <API_TOKEN>`. Wi-Fi: the device joi
 
 | # | Step | Done when |
 |---|---|---|
-| 1 | Set LM2596 to 5.0 V with no load | multimeter reads 5.0–5.1 V |
+| 1 | Measure the battery voltage; wire the power bank to the 5 V rail | battery is 1S or 2S (set `BATT_CELLS`); rail reads 5.0–5.1 V |
 | 2 | Uno + DHT11 + RTC on USB | serial shows `S,...` lines every second with a sane temperature and advancing epoch |
 | 3 | Add MQ-7, MQ-2, KY-037, battery divider | values react to a lighter (MQ-2, without flame), clapping (sound) and the measured battery voltage ±0.1 V |
 | 4 | Button, buzzer, privacy sense, LED | `E,BUTTON` on press, buzzer patterns via serial, `PRIVACY_*` events on toggle |
