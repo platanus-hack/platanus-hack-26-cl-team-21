@@ -14,10 +14,13 @@
 #define SAMPLE_PERIOD_MS 1000UL
 #define SOUND_WINDOW_MS 50UL
 #define REC_TIMEOUT_MS 3000UL
-#define LOW_BATT_MV 7000
-#define CRIT_BATT_MV 6600
-#define BATT_HYSTERESIS_MV 150
-#define BATT_DIVIDER 2.0          // 10k/10k
+// The battery label (260 mAh, 0.96 Wh) implies a single 3.7 V cell: measure it and set BATT_CELLS.
+#define BATT_CELLS 1
+#define LOW_BATT_MV (3500L * BATT_CELLS)
+#define CRIT_BATT_MV (3300L * BATT_CELLS)
+#define BATT_HYSTERESIS_MV (75L * BATT_CELLS)
+#define NO_BATT_MV 2500L          // below this: running from a power bank, no battery on the divider
+#define BATT_DIVIDER 2.0          // 100k/100k
 
 // ---------- Pins ----------
 const uint8_t PIN_MQ7 = A0;
@@ -36,7 +39,8 @@ const uint8_t PIN_RTC_DAT = 11;
 const uint8_t PIN_RTC_RST = 12;
 const uint8_t PIN_HEARTBEAT = LED_BUILTIN;
 
-const int EEPROM_PRIVACY_ADDR = 0;    // uint32_t epoch of last PRIVACY_ON (0 = none)
+const int EEPROM_PRIVACY_ON_ADDR = 0;   // uint32_t epoch of the last PRIVACY_ON (0 = none)
+const int EEPROM_PRIVACY_OFF_ADDR = 4;  // uint32_t epoch of the matching PRIVACY_OFF (0 = still on)
 
 SoftwareSerial hubLink(PIN_LINK_RX, PIN_LINK_TX);
 DHT dht(PIN_DHT, DHT11);
@@ -44,6 +48,7 @@ ThreeWire rtcWire(PIN_RTC_DAT, PIN_RTC_CLK, PIN_RTC_RST);
 RtcDS1302<ThreeWire> rtc(rtcWire);
 
 bool privacyOn = false;
+bool dhtFailed = false;
 bool lowBatt = false;
 bool critBatt = false;
 bool lastButton = HIGH;
@@ -164,15 +169,20 @@ void handleCommand(char *line) {
     return;
   }
   if (strcmp(line, "C,HELLO") == 0) {
-    uint32_t since;
-    EEPROM.get(EEPROM_PRIVACY_ADDR, since);
+    // Replay the last privacy interval; the event value carries the real switch time.
+    uint32_t since, until;
+    EEPROM.get(EEPROM_PRIVACY_ON_ADDR, since);
+    EEPROM.get(EEPROM_PRIVACY_OFF_ADDR, until);
     if (since != 0 && since != 0xFFFFFFFFUL) {
+      if (until == 0 || until == 0xFFFFFFFFUL || until < since) until = nowEpoch();
       char v[12];
       snprintf(v, sizeof(v), "%lu", since);
-      sendEvent("PRIVACY_ON", v);   // replay: privacy started at <since>
-      sendEvent("PRIVACY_OFF");     // ...and ended now (pendant just booted)
+      sendEvent("PRIVACY_ON", v);
+      snprintf(v, sizeof(v), "%lu", until);
+      sendEvent("PRIVACY_OFF", v);
       uint32_t zero = 0;
-      EEPROM.put(EEPROM_PRIVACY_ADDR, zero);
+      EEPROM.put(EEPROM_PRIVACY_ON_ADDR, zero);
+      EEPROM.put(EEPROM_PRIVACY_OFF_ADDR, zero);
     }
     sendLine("A,HELLO,OK");
     return;
@@ -213,12 +223,15 @@ void pollPrivacy() {
   bool on = digitalRead(PIN_PRIVACY_SENSE) == LOW;
   if (on == privacyOn) return;
   privacyOn = on;
+  uint32_t epoch = nowEpoch();
   if (on) {
-    uint32_t epoch = nowEpoch();
-    EEPROM.put(EEPROM_PRIVACY_ADDR, epoch);
+    uint32_t zero = 0;
+    EEPROM.put(EEPROM_PRIVACY_ON_ADDR, epoch);
+    EEPROM.put(EEPROM_PRIVACY_OFF_ADDR, zero);
     setLinkPowered(false);
-    sendEvent("PRIVACY_ON");  // USB log only; the pendant is off
+    sendEvent("PRIVACY_ON");  // USB log only; the camera is off
   } else {
+    EEPROM.put(EEPROM_PRIVACY_OFF_ADDR, epoch);
     setLinkPowered(true);
     // The ESP32-CAM replays the interval via C,HELLO once it boots.
   }
@@ -230,6 +243,7 @@ void pollRecLed() {
 }
 
 void checkBattery(long mv) {
+  if (mv < NO_BATT_MV) return;  // external power: no thresholds
   if (!lowBatt && mv < LOW_BATT_MV) { lowBatt = true; sendEvent("LOW_BATT"); buzz("DOUBLE"); }
   if (lowBatt && mv > LOW_BATT_MV + BATT_HYSTERESIS_MV) lowBatt = false;
   if (!critBatt && mv < CRIT_BATT_MV) { critBatt = true; sendEvent("CRIT_BATT"); buzz("LONG"); }
@@ -244,13 +258,17 @@ void sample() {
   int snd = readSoundP2P();
   long mv = readBatteryMv();
 
-  char ts[8] = "", hs[8] = "";
-  if (!isnan(t) && !isnan(h)) {
+  char ts[8] = "", hs[8] = "", bs[8] = "";
+  bool dhtOk = !isnan(t) && !isnan(h);
+  if (dhtOk) {
     dtostrf(t, 0, 1, ts);
     dtostrf(h, 0, 0, hs);
   }
+  if (!dhtOk && !dhtFailed) sendEvent("DHT_FAIL");
+  dhtFailed = !dhtOk;
+  if (mv >= NO_BATT_MV) snprintf(bs, sizeof(bs), "%ld", mv);  // empty = external power
   char line[80];
-  snprintf(line, sizeof(line), "S,%lu,%lu,%s,%s,%d,%d,%d,%ld", nowEpoch(), millis(), ts, hs, mq7, mq2, snd, mv);
+  snprintf(line, sizeof(line), "S,%lu,%lu,%s,%s,%d,%d,%d,%s", nowEpoch(), millis(), ts, hs, mq7, mq2, snd, bs);
   sendLine(line);
   checkBattery(mv);
 }
