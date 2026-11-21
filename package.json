@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "db",
+    "storage",
     "web",
     "worker"
   ],
@@ -18,6 +19,8 @@
     "db:seed": "npm run seed -w db",
     "mock:api": "node tools/mock-api/main.mjs",
     "mock:api:test": "node --test tools/mock-api/server.test.mjs",
-    "prepare": "git config core.hooksPath .githooks || true"
+    "prepare": "git config core.hooksPath .githooks || true",
+    "storage:test": "npm run test -w storage",
+    "storage:test:integration": "npm run test:integration -w storage"
   }
 }

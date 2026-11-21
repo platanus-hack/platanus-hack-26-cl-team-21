@@ -67,12 +67,13 @@ Kotlin. Talks to the device over its HTTP API on the local network, with a beare
 Local setup, commands and gotchas are in [`DEVELOPMENT.md`](./DEVELOPMENT.md).
 
 - **`db/`**: the shared Drizzle ORM schema (one module per area in `db/src/schema/`, re-exported by `db/src/schema.ts`), its migrations and the sensor-series helpers, imported by `web` and `worker` as `@observatorio/db`. Edit the schema, then run `npm run db:generate` and commit the migration. Rules Drizzle can't express (no-overlap constraints, immutability triggers, SQL functions, views) live in custom migrations and are covered by `npm run db:test`. See [`db/README.md`](./db/README.md). Only one person generates migrations at a time.
+- **`storage/`**: the object storage client (`@observatorio/storage`) shared by `web` and `worker`: presigned PUT/GET, HEAD, streamed GET, delete (every version) and the ADR 0002 key builders. Configured by the `S3_*` env vars.
 - **`web/`**: Next.js 16 (App Router, Cache Components) + Tailwind. It serves as the **API** (`/api/*`: ingestion from Android, protocol config, job enqueueing) and as the **researcher portal** (studies and protocols, timelines, evidence viewer, coverage, CSV/JSON export). Read `web/AGENTS.md` before touching Next.js code: the version has breaking changes. Any route that reads the DB must call `await connection()`.
 - **`worker/`**: a background worker that claims rows from the Postgres `jobs` table (`FOR UPDATE SKIP LOCKED`), dispatches on `job.type` and marks each job `done` or `failed`. This is where the video pipeline runs, because it is slow and needs `ffmpeg`:
   1. **Segment selection:** a headless coding agent (OpenCode or similar), spawned as a subprocess, runs a video-editing skill backed by `ffmpeg`. Guided by the study protocol, it outputs an edit list (EDL) and cut clips of the relevant moments, with some context before and after. Skills live in `worker/skills/`.
   2. **Extraction:** a multimodal LLM interprets the selected clips together with the aligned sensor data and returns JSON matching `data/schemas/observation`.
   3. **Validation and storage:** the worker validates the schema, adds provenance fields and writes the results through `@observatorio/db`.
-- Media files go to S3-compatible object storage through presigned PUT URLs (Backblaze B2 in production, MinIO locally; see ADR 0002). Postgres only stores metadata and references.
+- Media files go to S3-compatible object storage through presigned PUT URLs (Backblaze B2 bucket `olm-media-epoqpl` in production, MinIO from `docker-compose.yml` locally; see ADR 0002), through `@observatorio/storage`. Postgres only stores metadata and references.
 - Model and provider choices are TBD. Record them in `docs/decisions/` once they're picked.
 
 ### Deploy notes

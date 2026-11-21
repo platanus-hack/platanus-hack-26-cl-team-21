@@ -6,5 +6,33 @@ services:
       POSTGRES_DB: observatorio
     ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
+
+  # Local stand-in for Backblaze B2 (S3 API on :9000, console on :9001, user/password minioadmin).
+  # Chainguard's build (pinned by digest, it only publishes `latest`): MinIO no longer publishes images on Docker Hub or Quay.
+  minio:
+    image: cgr.dev/chainguard/minio@sha256:e9cf6b99c226e9539ed0f14b6f00e37b07da153c7ba1f4f8709c807574b471ec
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MC_HOST_local: http://minioadmin:minioadmin@localhost:9000
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [miniodata:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # Creates the bucket once MinIO is up, then exits.
+  minio-init:
+    image: cgr.dev/chainguard/minio@sha256:e9cf6b99c226e9539ed0f14b6f00e37b07da153c7ba1f4f8709c807574b471ec
+    depends_on:
+      minio: { condition: service_healthy }
+    environment:
+      MC_HOST_local: http://minioadmin:minioadmin@minio:9000
+    entrypoint: ["mc", "mb", "--ignore-existing", "local/olm-media"]
+
 volumes:
   pgdata:
+  miniodata:
