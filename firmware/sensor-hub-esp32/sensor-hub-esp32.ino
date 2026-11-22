@@ -18,6 +18,7 @@ constexpr int SoundDigitalPin = 4;
 constexpr uint16_t HubUdpPort = 4210;
 constexpr unsigned long Co2WarmupMs = 180000;
 constexpr unsigned long SendPeriodMs = 1000;
+constexpr unsigned long LateToleranceMs = 100;
 constexpr unsigned long ReadReserveMs = 400;  // DHT11 (~25 ms) and MH-Z19C (300 ms timeout) after the sound window
 constexpr uint8_t ReadCo2Request[] = {0xFF, 0x01, 0x86, 0, 0, 0, 0, 0, 0x79};
 
@@ -124,5 +125,5 @@ void loop() {
   while ((long)(nextSendMs - millis()) > 0) delay(1);
   sendToCamera(line);
   Serial.println(line);
-  if ((long)(millis() - nextSendMs) > (long)SendPeriodMs) nextSendMs = millis();
+  if ((long)(millis() - nextSendMs) > (long)LateToleranceMs) nextSendMs = millis();  // no catch-up bursts
 }
