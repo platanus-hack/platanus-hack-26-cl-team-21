@@ -22,6 +22,8 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.foundation.layout.WindowInsets
@@ -30,10 +32,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -49,12 +53,18 @@ import cl.observatorio.participante.pendant.PendantStatus
 import cl.observatorio.participante.pendant.SensorReading
 import cl.observatorio.participante.pendant.batteryPercentEstimate
 import cl.observatorio.participante.pendant.parseSensorLine
+import cl.observatorio.participante.pendant.recordingErrorMessage
+import cl.observatorio.participante.pendant.startRecording
+import cl.observatorio.participante.pendant.syncClockIfNeeded
 import cl.observatorio.participante.ui.theme.Amber
 import cl.observatorio.participante.ui.theme.Ink
 import cl.observatorio.participante.ui.theme.ObservatorioTheme
 import cl.observatorio.participante.ui.theme.TabularNumbers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONException
 import java.io.IOException
@@ -79,22 +89,67 @@ fun DeviceScreen(
     pendant: PendantApi,
     demoMode: Boolean,
     onChangePendant: () -> Unit,
+    protocolVersion: String,
     studyCode: String,
     participantId: String,
     onLeaveStudy: () -> Unit,
 ) {
     var confirmLeave by remember { mutableStateOf(false) }
     var state by remember(pendant) { mutableStateOf<PendantState>(PendantState.Searching) }
+    suspend fun refreshStatus(): PendantState = try {
+        PendantState.Found(pendant.status(), Instant.now())
+    } catch (e: IOException) {
+        PendantState.NotFound
+    } catch (e: JSONException) {
+        PendantState.NotFound
+    }
+    // One call sequence at a time: the poll's clock sync must not land between a start and the first frames.
+    val pendantCalls = remember(pendant) { Mutex() }
     LaunchedEffect(pendant) {
         while (true) {
-            state = try {
-                PendantState.Found(pendant.status(), Instant.now())
-            } catch (e: IOException) {
-                PendantState.NotFound
-            } catch (e: JSONException) {
-                PendantState.NotFound
+            pendantCalls.withLock {
+                state = refreshStatus()
+                (state as? PendantState.Found)?.let { found ->
+                    try {
+                        syncClockIfNeeded(pendant, found.status, Instant.now().epochSecond)
+                    } catch (e: IOException) {
+                        // Retried on the next poll.
+                    }
+                }
             }
             delay(STATUS_POLL_MS)
+        }
+    }
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    val resources = LocalContext.current.resources
+    var recordingBusy by remember(pendant) { mutableStateOf(false) }
+    fun runRecordingAction(action: suspend () -> Int?) {
+        recordingBusy = true
+        scope.launch {
+            val message = pendantCalls.withLock {
+                val result = try {
+                    action()
+                } catch (e: Exception) {
+                    recordingErrorMessage(e)
+                }
+                state = refreshStatus()
+                result
+            }
+            recordingBusy = false
+            if (message != null) snackbar.showSnackbar(resources.getString(message))
+        }
+    }
+    val onStartRecording = {
+        runRecordingAction {
+            startRecording(pendant, protocolVersion) { Instant.now().epochSecond }
+            null
+        }
+    }
+    val onStopRecording = {
+        runRecordingAction {
+            pendant.stopCapture()
+            R.string.recording_saved
         }
     }
     var serverOk by remember { mutableStateOf<Boolean?>(null) }
@@ -104,6 +159,7 @@ fun DeviceScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = { LargeTopAppBar(title = { Text(stringResource(R.string.tab_device)) }, scrollBehavior = scroll) },
+        snackbarHost = { SnackbarHost(snackbar) },
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
         Column(
@@ -123,7 +179,13 @@ fun DeviceScreen(
                     stringResource(R.string.device_not_found),
                     stringResource(R.string.device_not_found_body),
                 )
-                is PendantState.Found -> DeviceContent(current.status, current.receivedAt)
+                is PendantState.Found -> DeviceContent(
+                    current.status,
+                    current.receivedAt,
+                    recordingBusy = recordingBusy,
+                    onStartRecording = onStartRecording,
+                    onStopRecording = onStopRecording,
+                )
             }
             SectionTitle(stringResource(R.string.study_section))
             ListItem(
@@ -196,7 +258,13 @@ private fun PendantMessage(title: String, body: String?) {
 }
 
 @Composable
-private fun DeviceContent(s: PendantStatus, receivedAt: Instant) {
+private fun DeviceContent(
+    s: PendantStatus,
+    receivedAt: Instant,
+    recordingBusy: Boolean,
+    onStartRecording: () -> Unit,
+    onStopRecording: () -> Unit,
+) {
     PendantFrame {
         Text(stringResource(R.string.device_name, s.deviceId), style = MaterialTheme.typography.headlineSmall)
         Text(
@@ -219,6 +287,20 @@ private fun DeviceContent(s: PendantStatus, receivedAt: Instant) {
                 stringResource(if (s.capturing) R.string.device_recording else R.string.device_not_recording),
                 style = MaterialTheme.typography.titleMedium,
             )
+        }
+        if (s.capturing) {
+            Text(
+                stringResource(R.string.recording_frames, numberFormat.format(s.frames)),
+                style = MaterialTheme.typography.bodyMedium.merge(TabularNumbers),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 18.dp, top = 4.dp),
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        if (s.capturing) {
+            SecondaryActionButton(stringResource(R.string.recording_stop), onStopRecording, enabled = !recordingBusy)
+        } else {
+            MainActionButton(stringResource(R.string.recording_start), onStartRecording, enabled = !recordingBusy)
         }
     }
 
@@ -370,6 +452,9 @@ private fun DeviceContentPreview() {
                     linkBadChecksums = 0,
                 ),
                 Instant.now(),
+                recordingBusy = false,
+                onStartRecording = {},
+                onStopRecording = {},
             )
         }
     }
