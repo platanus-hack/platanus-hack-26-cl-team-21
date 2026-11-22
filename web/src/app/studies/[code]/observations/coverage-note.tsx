@@ -7,13 +7,12 @@ import type { CoverageSummary } from "@/lib/queries/observations";
 export function CoverageNote({ coverage, scope }: { coverage: CoverageSummary; scope: string }) {
   const { observedSeconds: observed, totalSeconds, notObserved: reasons, participantsWithoutPeriod } = coverage;
   const notObserved = totalSeconds - observed;
-  const partial = totalSeconds === 0 || reasons.length > 0 || participantsWithoutPeriod > 0;
+  // Some unobserved time is routine (GUIDELINES: warning is not for routine states). Amber only when
+  // it changes how the list must be read: nothing measurable, under half observed, or unmeasured people.
+  const caveat = totalSeconds === 0 || observed / totalSeconds < 0.5 || participantsWithoutPeriod > 0;
 
   return (
-    <section
-      aria-labelledby="coverage-title"
-      className={`rounded-lg border p-4 text-sm ${partial ? "border-warning bg-warning/20 text-ink" : "border-rule bg-paper-deep text-ink"}`}
-    >
+    <section aria-labelledby="coverage-title" className={`rounded-r-lg border-l-4 bg-paper-deep p-4 text-sm text-ink ${caveat ? "border-warning" : "border-hairline"}`}>
       <h2 id="coverage-title" className="font-semibold">
         Cobertura del alcance filtrado <span className="font-normal">({scope})</span>
       </h2>
@@ -65,11 +64,9 @@ export function CoverageNote({ coverage, scope }: { coverage: CoverageSummary; s
           (sin protocolo asignado o aún no comienza): su tiempo no observado no se puede cuantificar y no está incluido en el total anterior.
         </p>
       )}
-      <p className="mt-2 text-xs opacity-80">
-        El periodo de estudio de cada participante va desde su primera asignación a un protocolo hasta el fin de la última, su retiro
-        u hoy, lo que ocurra primero; “Sin registro” es tiempo de ese periodo sin datos subidos. La cobertura depende del
-        participante y la fecha, no del tipo de evento ni del estado de revisión. Las observaciones rechazadas en revisión humana no
-        se muestran.
+      <p className="mt-2 text-ink-muted">
+        La cobertura depende del participante y la fecha, no del tipo de evento ni del estado de revisión. Las observaciones rechazadas en
+        revisión humana no se muestran.
       </p>
     </section>
   );

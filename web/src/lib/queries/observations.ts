@@ -86,7 +86,16 @@ function participantScope(studyId: string, filters: ObservationFilters): SQL {
 const localDayStart = (date: string) => sql`(${date}::date::timestamp at time zone p.timezone)`;
 const localDayEnd = (date: string) => sql`((${date}::date + 1)::timestamp at time zone p.timezone)`;
 
-export async function listObservations(studyId: string, filters: ObservationFilters): Promise<ObservationRow[]> {
+export type ObservationPage = {
+  rows: ObservationRow[];
+  /** Every observation matching the filters, not just this page. */
+  total: number;
+  /** Of `total`, those in observed time (they count). */
+  counted: number;
+};
+
+/** The first `limit` observations by start time, plus totals over everything that matches. */
+export async function listObservations(studyId: string, filters: ObservationFilters, limit: number): Promise<ObservationPage> {
   const conditions = [participantScope(studyId, filters)];
   if (filters.eventType) conditions.push(sql`et.key = ${filters.eventType}`);
   if (filters.reviewStatus) conditions.push(sql`o.human_review_status = ${filters.reviewStatus}`);
@@ -94,8 +103,14 @@ export async function listObservations(studyId: string, filters: ObservationFilt
     conditions.push(sql`o.started_at >= ${localDayStart(filters.date)} and o.started_at < ${localDayEnd(filters.date)}`);
   }
 
-  const result = await db.execute<ObservationRow>(sql`
+  // Window counts run before LIMIT, so the totals cover every matching row.
+  const result = await db.execute<ObservationRow & { started_at: unknown; total: number; counted: number }>(sql`
+    select q.*,
+           count(*) over ()::int as total,
+           (count(*) filter (where q.in_observed_time) over ())::int as counted
+    from (
     select o.id,
+           o.started_at,
            p.pseudonym,
            p.timezone,
            et.key as event_type_key,
@@ -119,8 +134,15 @@ export async function listObservations(studyId: string, filters: ObservationFilt
     join pipeline_runs r on r.id = o.pipeline_run_id
     join protocol_versions pv on pv.id = r.protocol_version_id
     where ${sql.join(conditions, sql` and `)}
-    order by o.started_at, p.pseudonym`);
-  return result.rows;
+    ) q
+    order by q.started_at, q.pseudonym, q.id -- unique, so the LIMIT cut is stable between loads
+    limit ${limit}`);
+  const first = result.rows[0];
+  return {
+    rows: result.rows, // the extra columns (started_at, total, counted) ride along unused
+    total: first?.total ?? 0,
+    counted: first?.counted ?? 0,
+  };
 }
 
 export type CoverageSummary = CoverageBreakdown & {
