@@ -78,6 +78,7 @@ Local setup, commands and gotchas are in [`DEVELOPMENT.md`](./DEVELOPMENT.md).
   4. **Validation and storage:** output is validated (frame ranges, confidence, `event_types.attributes_schema`), then a `pipeline_runs` row, observations and evidence (seconds of the original video) are written through `@observatorio/db`.
 - Media files go to S3-compatible object storage through presigned PUT URLs (Backblaze B2 bucket `olm-media-epoqpl` in production, MinIO from `docker-compose.yml` locally; see ADR 0002), through `@observatorio/storage`. Postgres only stores metadata and references.
 - Models: Claude Haiku 5.5 for detection and Claude Opus 5.5 for extraction.
+- **`data/`**: the JSON Schemas and `data/eval`, which scores a pipeline run against annotated ground truth (`npm run eval`, see [`data/README.md`](./data/README.md)).
 
 ### Deploy notes
 
