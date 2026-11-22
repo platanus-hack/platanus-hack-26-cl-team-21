@@ -40,6 +40,11 @@ export interface Storage {
    */
   presignPut(key: string, opts?: { contentType?: string; contentLength?: number; expiresIn?: number }): Promise<string>;
   presignGet(key: string, opts?: { expiresIn?: number }): Promise<string>;
+  /**
+   * Uploads an object from the server side (the worker's clips). A stream needs its `contentLength` (the bucket
+   * rejects an unsized body); a Buffer knows its own.
+   */
+  put(key: string, body: Buffer | Readable, opts: { contentType: string; contentLength?: number }): Promise<void>;
   /** Size and metadata of an object, or `null` if it doesn't exist. */
   head(key: string): Promise<ObjectInfo | null>;
   getStream(key: string): Promise<Readable>;
@@ -93,6 +98,12 @@ export function createStorage(config: StorageConfig = storageConfigFromEnv()): S
 
     presignGet: (key, { expiresIn = DEFAULT_URL_TTL_SECONDS } = {}) =>
       getSignedUrl(signer, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn }),
+
+    async put(key, body, { contentType, contentLength }) {
+      const length = contentLength ?? (Buffer.isBuffer(body) ? body.length : undefined);
+      if (length === undefined) throw new Error("storage: put needs a contentLength for a stream");
+      await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType, ContentLength: length }));
+    },
 
     async head(key) {
       try {

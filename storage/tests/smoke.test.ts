@@ -3,6 +3,7 @@
 // Needs S3_* (MinIO by default: `docker compose up -d`). Run: npm run storage:test:integration
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { Readable } from "node:stream";
 import { text } from "node:stream/consumers";
 import { test } from "node:test";
 import { ListObjectVersionsCommand, S3Client } from "@aws-sdk/client-s3";
@@ -34,6 +35,24 @@ test("presigned PUT, HEAD, GET and delete round trip", async () => {
   assert.equal(await storage.head(key), null);
   assert.deepEqual(await versionsOf(key), [], "delete must leave no versions or hide markers behind");
   await storage.delete(key); // idempotent
+});
+
+test("put uploads a buffer and a sized stream, and refuses an unsized stream", async () => {
+  const storage = createStorage();
+  const prefix = `smoke-tests/${randomUUID()}`;
+  const body = "frames,csv\n1,2\n";
+  try {
+    await storage.put(`${prefix}-buffer.csv`, Buffer.from(body), { contentType: "text/csv" });
+    assert.equal(await text(await storage.getStream(`${prefix}-buffer.csv`)), body);
+    assert.equal((await storage.head(`${prefix}-buffer.csv`))?.contentType, "text/csv");
+
+    await storage.put(`${prefix}-stream.csv`, Readable.from([body]), { contentType: "text/csv", contentLength: Buffer.byteLength(body) });
+    assert.equal(await text(await storage.getStream(`${prefix}-stream.csv`)), body);
+
+    await assert.rejects(storage.put(`${prefix}-unsized.csv`, Readable.from([body]), { contentType: "text/csv" }), /contentLength/);
+  } finally {
+    await Promise.all(["buffer", "stream", "unsized"].map((name) => storage.delete(`${prefix}-${name}.csv`)));
+  }
 });
 
 async function versionsOf(key: string): Promise<string[]> {
