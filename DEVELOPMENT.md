@@ -38,9 +38,7 @@ Changing the schema: edit the module for that area in `db/src/schema/`, then `np
 
 ## Android
 
-Open `android/` in Android Studio and run it on the emulator; by default it calls `http://10.0.2.2:3000` (the host's `npm run dev:web`). For another backend: `./gradlew installDebug -PapiBaseUrl=https://...`.
-
-No backend yet? `npm run mock:api` serves the enrollment and upload API v0 on port 4010; see [`tools/mock-api/README.md`](tools/mock-api/README.md).
+Open `android/` in Android Studio and run it on the emulator. Debug builds call the mock backend at `http://10.0.2.2:4010`: start it with `npm run mock:api` (enrollment and upload API v0; codes `EAT-001-P01`…`P03` work, `EAT-001-P00` is already used; see [`tools/mock-api/README.md`](tools/mock-api/README.md)). For the real backend: `./gradlew installDebug -PapiBaseUrl=http://10.0.2.2:3000` (the host's `npm run dev:web`) or `-PapiBaseUrl=https://...`.
 
 CI runs the Android unit tests. Run the video encoder tests on a connected Android device or emulator from `android/`: `./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=cl.observatorio.participante.video.Mp4EncoderTest`.
 

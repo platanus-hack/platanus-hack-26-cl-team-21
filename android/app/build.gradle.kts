@@ -19,8 +19,8 @@ android {
 
     buildTypes {
         debug {
-            // 10.0.2.2 is the host machine from the Android emulator. Override with -PapiBaseUrl=...
-            buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("apiBaseUrl") ?: "http://10.0.2.2:3000"}\"")
+            // The mock backend (npm run mock:api) on the host; 10.0.2.2 is the host from the emulator. Override with -PapiBaseUrl=...
+            buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("apiBaseUrl") ?: "http://10.0.2.2:4010"}\"")
         }
         release {
             buildConfigField("String", "API_BASE_URL", "\"${project.findProperty("apiBaseUrl") ?: "https://olm-web.onrender.com"}\"")
