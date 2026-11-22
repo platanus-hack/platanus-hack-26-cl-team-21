@@ -36,6 +36,43 @@ Changing the schema: edit the module for that area in `db/src/schema/`, then `np
 
 `npm run test -w web` runs the API route tests (`web/src/**/*.test.ts`, `node:test` through `tsx`) against the database in `DATABASE_URL`. They insert their own study and participants with random codes and leave them there, so point it at a local or CI database, never production.
 
+### Upload walkthrough with curl
+
+With the web app, Postgres and MinIO running (see above) and the demo seed loaded, this enrolls a participant, uploads a tiny session and completes it (macOS: `date -r`; needs `jq`). Each run uses up one enrollment code (`CODE=EAT-001-P03 bash walkthrough.sh`); it ends with the upload in `processing` until the worker picks it up.
+
+```bash
+API=${API:-http://localhost:3000}
+CODE=${CODE:-EAT-001-P02}     # an unused enrollment code of the seeded study
+DEVICE=${DEVICE:-OLM-DEMO-01} # a device from `npm run db:seed`
+dir=$(mktemp -d)
+
+# 1. Enroll: the token authenticates every later call.
+TOKEN=$(curl -sf -X POST "$API/api/v1/enrollments" -H 'content-type: application/json' -d "{\"code\":\"$CODE\"}" | jq -r .participant_token)
+
+# 2. A tiny session: five files, a 4 s range (the video is not decoded by the server until the worker runs).
+T=$(date -u +%s); FROM=$(date -u -r $((T-3600)) +%Y-%m-%dT%H:%M:%SZ); TO=$(date -u -r $((T-3596)) +%Y-%m-%dT%H:%M:%SZ); E=$((T-3600))
+printf 'fake video bytes %s' "$RANDOM$RANDOM" > "$dir/video"
+printf 'seq,rtc_epoch_ms,uptime_ms,bytes\n1,%s000,0,10\n2,%s500,500,10\n3,%s000,1000,10\n' $E $E $((E+1)) > "$dir/frames"
+printf 'rtc_epoch,uptime_ms,temp_c,rh_pct,mq7,mq2,sound_p2p,batt_mv\n%s,0,22.5,50,300,400,500,7400\n' $E > "$dir/sensors"
+printf 'rtc_epoch,uptime_ms,type,value\n%s,0,BOOT,\n' $E > "$dir/events"
+ID=$(uuidgen | tr A-Z a-z)
+printf '{"manifest_version":"0","upload_id":"%s","excluded_intervals":[]}' "$ID" > "$dir/manifest"
+meta() { printf '{"kind":"%s","sha256":"%s","bytes":%s,"content_type":"%s"}' "$1" "$(shasum -a 256 "$dir/$1" | cut -d' ' -f1)" "$(wc -c < "$dir/$1" | tr -d ' ')" "$2"; }
+FILES="[$(meta video video/mp4),$(meta frames text/csv),$(meta sensors text/csv),$(meta events text/csv),$(meta manifest application/json)]"
+
+# 3. Register the upload and PUT each file to its presigned URL.
+RESP=$(curl -sf -X POST "$API/api/v1/uploads" -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d "{\"upload_id\":\"$ID\",\"device_id\":\"$DEVICE\",\"firmware_version\":\"0.1.0\",\"device_session_id\":\"walk-$ID\",\"recorded_from\":\"$FROM\",\"recorded_to\":\"$TO\",\"files\":$FILES}")
+for kind in video frames sensors events manifest; do
+  case $kind in video) ctype=video/mp4;; manifest) ctype=application/json;; *) ctype=text/csv;; esac
+  curl -sf -X PUT "$(jq -r ".files[]|select(.kind==\"$kind\")|.put_url" <<<"$RESP")" -H "content-type: $ctype" --data-binary "@$dir/$kind"
+done
+
+# 4. Complete, then read the status.
+curl -sf -X POST "$API/api/v1/uploads/$ID/complete" -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"excluded_intervals":[]}'; echo
+curl -sf "$API/api/v1/uploads/$ID" -H "authorization: Bearer $TOKEN"; echo
+```
+
 ## Android
 
 Open `android/` in Android Studio and run it on the emulator. Debug builds call the mock backend at `http://10.0.2.2:4010`: start it with `npm run mock:api` (enrollment and upload API v0; codes `EAT-001-P01`…`P03` work, `EAT-001-P00` is already used; see [`tools/mock-api/README.md`](tools/mock-api/README.md)). For the real backend: `./gradlew installDebug -PapiBaseUrl=http://10.0.2.2:3000` (the host's `npm run dev:web`) or `-PapiBaseUrl=https://...`.

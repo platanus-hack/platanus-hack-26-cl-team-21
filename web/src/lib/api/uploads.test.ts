@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { after, describe, test } from "node:test";
-import { coverageIntervals, db, deviceEvents, eq, jobs, mediaAssets, sensorWindowStats } from "@observatorio/db";
+import { coverageIntervals, db, deviceEvents, deviceSensors, devices, eq, jobs, mediaAssets, sensorWindowStats, syncBatches } from "@observatorio/db";
+import { createStorage, uploadFileKey } from "@observatorio/storage";
 import { closeDb, createDevice, createStudyWithParticipant, jsonRequest } from "@/test/fixtures";
 import { enroll } from "./enrollments";
 import { completeUpload, createUpload, getUpload } from "./uploads";
@@ -17,11 +18,11 @@ const KINDS = [
 ] as const;
 
 async function setup() {
-  const { enrollmentCode, participantId } = await createStudyWithParticipant();
+  const { enrollmentCode, participantId, studyId } = await createStudyWithParticipant();
   const device = await createDevice();
   const response = await enroll(jsonRequest("http://localhost/api/v1/enrollments", { code: enrollmentCode }));
   const { participant_token: token } = await response.json();
-  return { token, participantId, serial: device.serial };
+  return { token, participantId, studyId, serial: device.serial };
 }
 
 const body = (serial: string, overrides: Record<string, unknown> = {}) => ({
@@ -92,22 +93,25 @@ describe("POST /api/v1/uploads/{id}/complete", () => {
     completeUpload(jsonRequest(`http://localhost/api/v1/uploads/${id}/complete`, { excluded_intervals: excluded }, { authorization: `Bearer ${token}` }), id);
 
   const T = Date.parse("2026-11-21T14:00:00-03:00");
-  const iso = (offsetMs: number) => new Date(T + offsetMs).toISOString();
   const sha = (content: string) => createHash("sha256").update(content).digest("hex");
+  const DAY = 24 * 3600_000;
 
   // 10 s session: frames 0-2.5 s and 5-6.5 s, 3-5 s excluded by the participant, privacy switch 7-8 s.
-  function bundle(serial: string) {
-    const excluded = [{ start: iso(3000), end: iso(5000) }];
-    const frames = "seq,rtc_epoch_ms,uptime_ms,bytes\n" + [0, 500, 1000, 1500, 2000, 2500, 5000, 5500, 6000, 6500].map((ms, i) => `${i + 1},${T + ms},${ms},100`).join("\n") + "\n";
+  // `shift` moves it in time, `withVideo: false` is a whole-clip exclusion (no video or frames), `video` reuses a video.
+  function bundle(serial: string, { shift = 0, withVideo = true, video = "not really an mp4 but the server never decodes it " + randomUUID() } = {}) {
+    const t0 = T + shift;
+    const at = (offsetMs: number) => new Date(t0 + offsetMs).toISOString();
+    const id = randomUUID();
+    const excluded = [{ start: at(3000), end: at(5000) }];
+    const frames = "seq,rtc_epoch_ms,uptime_ms,bytes\n" + [0, 500, 1000, 1500, 2000, 2500, 5000, 5500, 6000, 6500].map((ms, i) => `${i + 1},${t0 + ms},${ms},100`).join("\n") + "\n";
     const sensors =
       "rtc_epoch,uptime_ms,temp_c,rh_pct,mq7,mq2,sound_p2p,batt_mv\n" +
-      Array.from({ length: 10 }, (_, i) => `${T / 1000 + i},${i * 1000},22.5,,300,400,500,${i === 0 ? -1 : 7400}`).join("\n") + "\n";
-    const events = `rtc_epoch,uptime_ms,type,value\n${T / 1000},1,BOOT,\n${T / 1000 + 7},7000,PRIVACY_ON,${T / 1000 + 7}\n${T / 1000 + 8},8000,PRIVACY_OFF,${T / 1000 + 8}\n`;
-    const video = "not really an mp4 but the server never decodes it " + randomUUID();
-    const manifest = JSON.stringify({ manifest_version: "0", excluded_intervals: excluded });
-    const contents = { video, frames, sensors, events, manifest };
-    const files = KINDS.map(([kind, content_type]) => ({ kind, sha256: sha(contents[kind]), bytes: Buffer.byteLength(contents[kind]), content_type }));
-    return { contents, excluded, payload: body(serial, { recorded_from: iso(0), recorded_to: iso(10_000), files }) };
+      Array.from({ length: 10 }, (_, i) => `${t0 / 1000 + i},${i * 1000},22.5,,300,400,500,${i === 0 ? -1 : 7400}`).join("\n") + "\n";
+    const events = `rtc_epoch,uptime_ms,type,value\n${t0 / 1000},1,BOOT,\n${t0 / 1000 + 7},7000,PRIVACY_ON,${t0 / 1000 + 7}\n${t0 / 1000 + 8},8000,PRIVACY_OFF,${t0 / 1000 + 8}\n`;
+    const manifest = JSON.stringify({ manifest_version: "0", upload_id: id, excluded_intervals: excluded });
+    const contents: Record<string, string> = { sensors, events, manifest, ...(withVideo ? { video, frames } : {}) };
+    const files = KINDS.filter(([kind]) => kind in contents).map(([kind, content_type]) => ({ kind, sha256: sha(contents[kind]), bytes: Buffer.byteLength(contents[kind]), content_type }));
+    return { id, video, contents, excluded, payload: body(serial, { upload_id: id, recorded_from: at(0), recorded_to: at(10_000), files }) };
   }
 
   const putAll = async (files: { kind: string; put_url: string }[], contents: Record<string, string>) => {
@@ -115,6 +119,12 @@ describe("POST /api/v1/uploads/{id}/complete", () => {
       const put = await fetch(file.put_url, { method: "PUT", headers: { "content-type": KINDS.find(([k]) => k === file.kind)![1] }, body: contents[file.kind] });
       assert.equal(put.status, 200);
     }
+  };
+
+  const createAndPut = async (token: string, b: ReturnType<typeof bundle>) => {
+    const created = await (await post(token, b.payload)).json();
+    await putAll(created.files, b.contents);
+    return created;
   };
 
   test("rejects missing files", async () => {
@@ -129,31 +139,30 @@ describe("POST /api/v1/uploads/{id}/complete", () => {
 
   test("ingests the bundle: media asset, sensors, events, coverage and one job", async () => {
     const { token, serial, participantId } = await setup();
-    const { payload, contents, excluded } = bundle(serial);
-    const created = await (await post(token, payload)).json();
-    await putAll(created.files, contents);
+    const b = bundle(serial);
+    await createAndPut(token, b);
 
-    const [first, second] = await Promise.all([complete(token, payload.upload_id, excluded), complete(token, payload.upload_id, excluded)]);
+    const [first, second] = await Promise.all([complete(token, b.id, b.excluded), complete(token, b.id, b.excluded)]);
     assert.equal(first.status, 202);
     const a = await first.json();
     assert.equal(a.status, "processing");
     assert.equal((await second.json()).job_id, a.job_id);
 
     const [job] = await db.select().from(jobs).where(eq(jobs.id, a.job_id));
-    assert.deepEqual(job.payload, { upload_id: payload.upload_id });
+    assert.deepEqual(job.payload, { upload_id: b.id });
 
-    const [asset] = await db.select().from(mediaAssets).where(eq(mediaAssets.id, payload.upload_id));
-    assert.equal(asset.sha256, sha(contents.video));
+    const [asset] = await db.select().from(mediaAssets).where(eq(mediaAssets.id, b.id));
+    assert.equal(asset.sha256, sha(b.video));
     assert.equal(asset.recordedFrom.getTime(), T);
     assert.equal(asset.recordedTo.getTime(), T + 6500);
 
-    const coverage = await db.select().from(coverageIntervals).where(eq(coverageIntervals.batchId, payload.upload_id)).orderBy(coverageIntervals.startedAt);
+    const coverage = await db.select().from(coverageIntervals).where(eq(coverageIntervals.batchId, b.id)).orderBy(coverageIntervals.startedAt);
     assert.deepEqual(
       coverage.map((c) => `${c.status}:${c.startedAt.getTime() - T}-${c.endedAt.getTime() - T}`),
       ["observed:0-2500", "device_off:2500-3000", "excluded_by_participant:3000-5000", "observed:5000-6500", "device_off:6500-7000", "privacy_switch:7000-8000", "device_off:8000-10000"],
     );
 
-    const events = await db.select().from(deviceEvents).where(eq(deviceEvents.batchId, payload.upload_id));
+    const events = await db.select().from(deviceEvents).where(eq(deviceEvents.batchId, b.id));
     assert.deepEqual(events.map((e) => e.kind).sort(), ["boot", "privacy_switch_off", "privacy_switch_on"]);
 
     const stats = Object.fromEntries((await sensorWindowStats(participantId, new Date(T), new Date(T + 10_000))).map((s) => [s.sensorType, s]));
@@ -162,25 +171,109 @@ describe("POST /api/v1/uploads/{id}/complete", () => {
     assert.equal(stats.humidity_pct, undefined); // every value was empty
   });
 
+  test("accepts a whole-clip exclusion with no video: no_upload coverage, no media asset", async () => {
+    const { token, serial } = await setup();
+    const b = bundle(serial, { withVideo: false });
+    await createAndPut(token, b);
+
+    const response = await complete(token, b.id, b.excluded);
+    assert.equal(response.status, 202);
+
+    assert.equal((await db.select().from(mediaAssets).where(eq(mediaAssets.id, b.id))).length, 0);
+    const coverage = await db.select().from(coverageIntervals).where(eq(coverageIntervals.batchId, b.id)).orderBy(coverageIntervals.startedAt);
+    assert.deepEqual(
+      coverage.map((c) => `${c.status}:${c.startedAt.getTime() - T}-${c.endedAt.getTime() - T}`),
+      ["no_upload:0-3000", "excluded_by_participant:3000-5000", "no_upload:5000-7000", "privacy_switch:7000-8000", "no_upload:8000-10000"],
+    );
+  });
+
+  test("rejects video without frames and a body without sensors", async () => {
+    const { token, serial } = await setup();
+    const { payload } = bundle(serial);
+    const withoutFrames = { ...payload, files: payload.files.filter((f: { kind: string }) => f.kind !== "frames") };
+    assert.equal((await post(token, withoutFrames)).status, 400);
+    const withoutSensors = { ...payload, files: payload.files.filter((f: { kind: string }) => f.kind !== "sensors") };
+    assert.equal((await post(token, withoutSensors)).status, 400);
+  });
+
   test("rejects a file whose content does not match its declared hash", async () => {
     const { token, serial } = await setup();
-    const { payload, contents, excluded } = bundle(serial);
-    const created = await (await post(token, payload)).json();
-    await putAll(created.files, { ...contents, events: contents.events.replace("BOOT", "BUTT") }); // same size, other content
+    const b = bundle(serial);
+    const created = await (await post(token, b.payload)).json();
+    await putAll(created.files, { ...b.contents, events: b.contents.events.replace("BOOT", "BUTT") }); // same size, other content
 
-    const response = await complete(token, payload.upload_id, excluded);
+    const response = await complete(token, b.id, b.excluded);
     assert.equal(response.status, 409);
     assert.equal((await response.json()).error.code, "files_mismatch");
   });
 
   test("rejects exclusions that differ from the manifest", async () => {
     const { token, serial } = await setup();
-    const { payload, contents } = bundle(serial);
-    const created = await (await post(token, payload)).json();
-    await putAll(created.files, contents);
+    const b = bundle(serial);
+    await createAndPut(token, b);
 
-    const response = await complete(token, payload.upload_id, []);
+    const response = await complete(token, b.id, []);
     assert.equal(response.status, 409);
     assert.equal((await response.json()).error.code, "files_mismatch");
+  });
+
+  test("answers 409 when another upload took the range between create and complete", async () => {
+    const { token, serial, participantId } = await setup();
+    const b = bundle(serial);
+    await createAndPut(token, b);
+    // What a concurrent upload of the same participant leaves behind once it completed.
+    await db.insert(coverageIntervals).values({ participantId, startedAt: new Date(T + 1000), endedAt: new Date(T + 2000), status: "observed", source: "derived" });
+
+    const response = await complete(token, b.id, b.excluded);
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error.code, "upload_conflict");
+  });
+
+  test("creates a device's sensors once when its first two uploads complete together", async () => {
+    const { token, serial } = await setup();
+    const [a, b] = [bundle(serial), bundle(serial, { shift: DAY })];
+    await Promise.all([createAndPut(token, a), createAndPut(token, b)]);
+
+    const statuses = (await Promise.all([complete(token, a.id, a.excluded), complete(token, b.id, b.excluded)])).map((r) => r.status);
+    assert.deepEqual(statuses, [202, 202]);
+
+    const [device] = await db.select({ id: devices.id }).from(devices).where(eq(devices.serial, serial));
+    const sensors = await db.select().from(deviceSensors).where(eq(deviceSensors.deviceId, device.id));
+    assert.deepEqual(sensors.map((s) => s.sensorTypeKey).sort(), ["battery_mv", "co_raw", "flammable_gas_raw", "sound_level_raw", "temperature_c"]);
+  });
+
+  test("a retry of a failed upload replaces it: its rows and objects go, the new one lands", async () => {
+    const { token, serial, studyId, participantId } = await setup();
+    const failed = bundle(serial);
+    await createAndPut(token, failed);
+    assert.equal((await complete(token, failed.id, failed.excluded)).status, 202);
+    await db.update(syncBatches).set({ status: "failed", errorCode: "processing_failed", errorMessage: "boom" }).where(eq(syncBatches.id, failed.id));
+
+    // Same session, range and video, new upload_id (the manifest carries it, so its hash differs).
+    const retry = bundle(serial, { video: failed.video });
+    const created = await post(token, retry.payload);
+    assert.equal(created.status, 201);
+
+    assert.equal((await db.select().from(coverageIntervals).where(eq(coverageIntervals.batchId, failed.id))).length, 0);
+    assert.equal((await db.select().from(deviceEvents).where(eq(deviceEvents.batchId, failed.id))).length, 0);
+    assert.equal((await db.select().from(mediaAssets).where(eq(mediaAssets.id, failed.id))).length, 0);
+    const [kept] = await db.select().from(syncBatches).where(eq(syncBatches.id, failed.id));
+    assert.equal(kept.status, "failed");
+    const storage = createStorage();
+    for (const kind of ["video", "frames", "sensors", "events", "manifest"] as const) {
+      assert.equal(await storage.head(uploadFileKey(studyId, participantId, failed.id, kind)), null);
+    }
+
+    await putAll((await created.json()).files, retry.contents);
+    assert.equal((await complete(token, retry.id, retry.excluded)).status, 202);
+    assert.equal((await db.select().from(mediaAssets).where(eq(mediaAssets.id, retry.id))).length, 1);
+  });
+
+  test("hands out presigned URLs that expire in 15 minutes", async () => {
+    const { token, serial } = await setup();
+    const created = await (await post(token, bundle(serial).payload)).json();
+    const minutes = (Date.parse(created.files[0].expires_at) - Date.now()) / 60_000;
+    assert.ok(minutes > 14 && minutes <= 15, `expires in ${minutes} min`);
+    assert.match(created.files[0].put_url, /X-Amz-Expires=900/);
   });
 });

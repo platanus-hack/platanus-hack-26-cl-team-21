@@ -10,9 +10,9 @@ import {
   syncBatches,
 } from "@observatorio/db";
 import { createHash } from "node:crypto";
-import { createStorage, DEFAULT_URL_TTL_SECONDS, uploadFileKey, UPLOAD_FILES, type UploadFileKind } from "@observatorio/storage";
+import { createStorage, uploadFileKey, UPLOAD_FILES, type UploadFileKind } from "@observatorio/storage";
 import { ApiError, errorResponse, invalidRequest, isNonEmptyString, readJsonObject } from "./errors";
-import { ingestSession } from "./ingest";
+import { ingestSession, purgeFailedUploads } from "./ingest";
 import { authenticateParticipant } from "./participant-token";
 
 type Participant = Awaited<ReturnType<typeof authenticateParticipant>>;
@@ -28,6 +28,10 @@ const CONTENT_TYPES: Record<UploadFileKind, string> = {
   manifest: "application/json",
 };
 const KINDS = Object.keys(UPLOAD_FILES) as UploadFileKind[];
+// A whole-clip exclusion uploads no video, so only these are always required; `video` and `frames` come as a pair.
+const REQUIRED_KINDS: UploadFileKind[] = ["sensors", "events", "manifest"];
+// Short on purpose (MON-27): a late PUT to an old URL could leave an orphan object after a retry deleted its upload.
+const UPLOAD_URL_TTL_SECONDS = 15 * 60;
 
 interface DeclaredFile {
   kind: UploadFileKind;
@@ -45,10 +49,13 @@ export async function createUpload(request: Request) {
     const body = await readJsonObject(request);
     const upload = parseUploadBody(body);
 
+    // shortcut: v0 only checks the device exists, not that it is assigned to this participant (accepted in ADR 0002, §2).
     const [device] = await db.select({ id: devices.id }).from(devices).where(eq(devices.serial, upload.deviceSerial));
     if (!device) throw invalidRequest("Unknown device_id");
 
     const manifest = upload.files.find((file) => file.kind === "manifest")!;
+    const storage = createStorage();
+    const staleKeys: string[] = [];
     const inserted = await db.transaction(async (tx) => {
       const [overlap] = await tx
         .select({ id: syncBatches.id })
@@ -63,6 +70,7 @@ export async function createUpload(request: Request) {
         )
         .limit(1);
       if (overlap) throw new ApiError(409, "upload_conflict", "Recorded range overlaps another upload");
+      staleKeys.push(...(await purgeFailedUploads(tx, participant, upload.deviceSessionId, upload.recordedFrom, upload.recordedTo)));
 
       // Also swallows the (device, payload hash) unique violation; the lookup below turns it into a 409.
       const [row] = await tx
@@ -86,8 +94,10 @@ export async function createUpload(request: Request) {
       return Boolean(row);
     });
 
+    // After the commit, so a failed delete can't undo the database cleanup; `delete` is idempotent.
+    await Promise.all(staleKeys.map((key) => storage.delete(key)));
     if (!inserted) await assertSameUpload(participant, upload, device.id);
-    const files = await presignFiles(participant, upload.id, upload.files);
+    const files = await presignFiles(storage, participant, upload.id, upload.files);
     return Response.json({ upload_id: upload.id, files }, { status: inserted ? 201 : 200 });
   } catch (error) {
     return errorResponse(error);
@@ -117,7 +127,9 @@ export async function completeUpload(request: Request, uploadId: string) {
       const text = Object.fromEntries(
         await Promise.all(
           (["frames", "sensors", "events", "manifest"] as const).map(async (kind) => {
-            const file = declared.find((f) => f.kind === kind)!;
+            const file = declared.find((f) => f.kind === kind);
+            if (!file) return [kind, ""]; // frames of an upload with no video
+
             if (file.sizeBytes > MAX_TEXT_FILE_BYTES) throw invalidRequest(`${kind} is too large`);
             const content = await readText(storage, uploadFileKey(participant.studyId, participant.participantId, batch.id, kind));
             if (createHash("sha256").update(content).digest("hex") !== file.sha256) throw new ApiError(409, "files_mismatch", `sha256 mismatch: ${kind}`);
@@ -127,7 +139,7 @@ export async function completeUpload(request: Request, uploadId: string) {
       ) as Record<"frames" | "sensors" | "events" | "manifest", string>;
       assertSameExclusions(text.manifest, excluded);
 
-      const video = declared.find((f) => f.kind === "video")!;
+      const video = declared.find((f) => f.kind === "video");
       const [device] = await db.select({ serial: devices.serial }).from(devices).where(eq(devices.id, batch.deviceId));
       await db.transaction(async (tx) => {
         // Lock the row so two concurrent `complete` calls enqueue a single job.
@@ -142,7 +154,7 @@ export async function completeUpload(request: Request, uploadId: string) {
           firmwareVersion: batch.firmwareVersion,
           recordedFrom: batch.recordedFrom,
           recordedTo: batch.recordedTo,
-          video: { sha256: video.sha256, bytes: video.sizeBytes, storageKey: uploadFileKey(participant.studyId, participant.participantId, batch.id, "video") },
+          video: video && { sha256: video.sha256, bytes: video.sizeBytes, storageKey: uploadFileKey(participant.studyId, participant.participantId, batch.id, "video") },
           frames: text.frames,
           sensors: text.sensors,
           events: text.events,
@@ -201,8 +213,9 @@ function parseUploadBody(body: Record<string, unknown>) {
     if (contentType !== CONTENT_TYPES[kind as UploadFileKind]) throw invalidRequest(`${kind}.content_type must be ${CONTENT_TYPES[kind as UploadFileKind]}`);
     declared.set(kind as UploadFileKind, { kind: kind as UploadFileKind, sha256, bytes: bytes as number, contentType });
   }
-  const missing = KINDS.filter((kind) => !declared.has(kind));
+  const missing = REQUIRED_KINDS.filter((kind) => !declared.has(kind));
   if (missing.length) throw invalidRequest(`files must declare: ${missing.join(", ")}`);
+  if (declared.has("video") !== declared.has("frames")) throw invalidRequest("video and frames must be declared together");
 
   return {
     id: upload_id.toLowerCase(),
@@ -211,7 +224,7 @@ function parseUploadBody(body: Record<string, unknown>) {
     deviceSessionId: device_session_id,
     recordedFrom: recorded_from,
     recordedTo: recorded_to,
-    files: KINDS.map((kind) => declared.get(kind)!),
+    files: KINDS.flatMap((kind) => declared.get(kind) ?? []),
   };
 }
 
@@ -232,15 +245,15 @@ async function assertSameUpload(participant: Participant, upload: ReturnType<typ
   if (!same) throw new ApiError(409, "upload_conflict", "upload_id was already used with a different body");
 }
 
-async function presignFiles(participant: Participant, uploadId: string, files: DeclaredFile[]) {
-  const storage = createStorage();
-  const expiresAt = new Date(Date.now() + DEFAULT_URL_TTL_SECONDS * 1000).toISOString();
+async function presignFiles(storage: ReturnType<typeof createStorage>, participant: Participant, uploadId: string, files: DeclaredFile[]) {
+  const expiresAt = new Date(Date.now() + UPLOAD_URL_TTL_SECONDS * 1000).toISOString();
   return Promise.all(
     files.map(async (file) => ({
       kind: file.kind,
       put_url: await storage.presignPut(uploadFileKey(participant.studyId, participant.participantId, uploadId, file.kind), {
         contentType: file.contentType,
         contentLength: file.bytes,
+        expiresIn: UPLOAD_URL_TTL_SECONDS,
       }),
       expires_at: expiresAt,
     })),
