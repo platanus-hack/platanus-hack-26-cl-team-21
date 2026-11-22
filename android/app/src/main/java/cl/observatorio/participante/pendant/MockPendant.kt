@@ -13,8 +13,6 @@ import java.io.ByteArrayOutputStream
 import java.util.Locale
 import kotlin.math.sin
 
-// shortcut: in-app stand-in for firmware/pendant-cam until the HTTP client lands (milestone 2).
-// It builds the same JSON and CSV the firmware serves and parses them with the same functions the client will use.
 class MockPendant(@Volatile var reachable: Boolean = true) : PendantApi {
 
     private class MockSession(

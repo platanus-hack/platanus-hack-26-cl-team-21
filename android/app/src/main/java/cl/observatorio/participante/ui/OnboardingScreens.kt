@@ -37,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +50,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.semantics
@@ -57,7 +60,12 @@ import cl.observatorio.participante.BuildConfig
 import cl.observatorio.participante.ui.theme.TabularNumbers
 import cl.observatorio.participante.R
 import cl.observatorio.participante.ui.theme.ObservatorioTheme
-import kotlinx.coroutines.delay
+import cl.observatorio.participante.pendant.PendantApi
+import cl.observatorio.participante.pendant.PendantRequestException
+import cl.observatorio.participante.pendant.parsePendantAddress
+import kotlinx.coroutines.launch
+import org.json.JSONException
+import java.io.IOException
 
 @Composable
 fun WelcomeScreen(onStart: () -> Unit) {
@@ -225,65 +233,78 @@ private fun ConsentList(title: String, items: List<Int>, included: Boolean) {
     }
 }
 
-private enum class PairState { SEARCHING, FOUND, CONNECTING, CONNECTED }
-
-// shortcut: simulated scan and connection, replace with a BLE scan (and its runtime permissions) once the firmware advertises.
 @Composable
-fun PairScreen(onBack: () -> Unit, onDone: () -> Unit) {
-    var state by rememberSaveable { mutableStateOf(PairState.SEARCHING) }
-    LaunchedEffect(state) {
-        when (state) {
-            PairState.SEARCHING -> { delay(1_500); state = PairState.FOUND }
-            PairState.CONNECTING -> { delay(1_000); state = PairState.CONNECTED }
-            else -> Unit
-        }
-    }
+fun PairScreen(
+    savedAddress: String?,
+    savedToken: String?,
+    createPendant: (address: String, token: String) -> PendantApi,
+    onBack: () -> Unit,
+    onConnect: (address: String, token: String) -> Unit,
+    onDemo: () -> Unit,
+) {
+    var address by rememberSaveable { mutableStateOf(savedAddress ?: "192.168.4.1") }
+    var token by remember { mutableStateOf(savedToken.orEmpty()) }
+    var connecting by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<Int?>(null) }
+    val scope = rememberCoroutineScope()
+    val validToken = token.trim().isNotEmpty() && token.trim().all { it in '!'..'~' }
+    val validAddress = parsePendantAddress(address) != null
+
     StepScaffold(
         title = stringResource(R.string.pair_title),
         onBack = onBack,
         action = {
-            MainActionButton(stringResource(R.string.pair_finish), onClick = onDone, enabled = state == PairState.CONNECTED)
+            MainActionButton(
+                stringResource(if (connecting) R.string.pair_connecting else R.string.pair_connect),
+                enabled = !connecting && validAddress && validToken,
+                onClick = {
+                    val enteredAddress = address.trim()
+                    val enteredToken = token.trim()
+                    connecting = true
+                    error = null
+                    scope.launch {
+                        try {
+                            createPendant(enteredAddress, enteredToken).status()
+                            onConnect(enteredAddress, enteredToken)
+                        } catch (e: PendantRequestException) {
+                            error = if (e.httpStatus == 401) R.string.pair_token_rejected else R.string.pair_invalid_response
+                        } catch (e: IOException) {
+                            error = R.string.pair_unreachable
+                        } catch (e: JSONException) {
+                            error = R.string.pair_invalid_response
+                        } finally {
+                            connecting = false
+                        }
+                    }
+                },
+            )
         },
     ) {
         Text(stringResource(R.string.pair_body), style = MaterialTheme.typography.bodyLarge)
-        SectionTitle(stringResource(R.string.pair_nearby), inset = 0.dp)
-        if (state == PairState.SEARCHING) {
-            LinearProgressIndicator(Modifier.fillMaxWidth())
-            Text(
-                stringResource(R.string.pair_searching),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("pendant-01", style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        stringResource(
-                            when (state) {
-                                PairState.FOUND -> R.string.pair_found
-                                PairState.CONNECTING -> R.string.pair_connecting
-                                else -> R.string.pair_connected
-                            },
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                when (state) {
-                    PairState.FOUND -> InlineButton(stringResource(R.string.pair_connect), onClick = { state = PairState.CONNECTING })
-                    PairState.CONNECTED -> Icon(Icons.Outlined.CheckCircle, null, tint = MaterialTheme.colorScheme.secondary)
-                    else -> Unit
-                }
-            }
-            if (state == PairState.CONNECTED) {
-                Text(
-                    stringResource(R.string.pair_clock_synced, "0,4"),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
+        OutlinedTextField(
+            value = address,
+            onValueChange = { address = it; error = null },
+            label = { Text(stringResource(R.string.pair_address)) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            singleLine = true,
+            enabled = !connecting,
+            isError = address.isNotBlank() && !validAddress,
+            supportingText = { Text(stringResource(R.string.pair_address_hint)) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = token,
+            onValueChange = { token = it; error = null },
+            label = { Text(stringResource(R.string.pair_token)) },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            singleLine = true,
+            enabled = !connecting,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (connecting) LinearProgressIndicator(Modifier.fillMaxWidth())
+        error?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }
+        SecondaryActionButton(stringResource(R.string.pair_demo), onClick = onDemo, enabled = !connecting)
     }
 }
 

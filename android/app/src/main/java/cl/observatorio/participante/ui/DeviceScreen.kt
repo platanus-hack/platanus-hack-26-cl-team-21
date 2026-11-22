@@ -75,9 +75,16 @@ private sealed interface PendantState {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeviceScreen(pendant: PendantApi, studyCode: String, participantId: String, onLeaveStudy: () -> Unit) {
+fun DeviceScreen(
+    pendant: PendantApi,
+    demoMode: Boolean,
+    onChangePendant: () -> Unit,
+    studyCode: String,
+    participantId: String,
+    onLeaveStudy: () -> Unit,
+) {
     var confirmLeave by remember { mutableStateOf(false) }
-    var state by remember { mutableStateOf<PendantState>(PendantState.Searching) }
+    var state by remember(pendant) { mutableStateOf<PendantState>(PendantState.Searching) }
     LaunchedEffect(pendant) {
         while (true) {
             state = try {
@@ -105,6 +112,11 @@ fun DeviceScreen(pendant: PendantApi, studyCode: String, participantId: String, 
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 24.dp),
         ) {
+            ListItem(
+                headlineContent = { Text(stringResource(if (demoMode) R.string.pair_mode_demo else R.string.pair_mode_real)) },
+                trailingContent = { InlineButton(stringResource(R.string.pair_change), onClick = onChangePendant) },
+                colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+            )
             when (val current = state) {
                 PendantState.Searching -> PendantMessage(stringResource(R.string.device_searching), null)
                 PendantState.NotFound -> PendantMessage(
