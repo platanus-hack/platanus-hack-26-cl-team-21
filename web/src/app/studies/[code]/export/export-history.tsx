@@ -1,3 +1,5 @@
+import { TableFrame, TBody, TD, TH, TR } from "@/components/data-table";
+import { Hash } from "@/components/hash";
 import type { ExportHistoryItem } from "@/lib/export/queries";
 import { DATASET_LABEL, EXPORT_STATUS_LABEL, formatDateTime } from "./labels";
 
@@ -23,39 +25,37 @@ export function ExportHistory({ items }: { items: ExportHistoryItem[] }) {
     );
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-rule">
-      <table className="w-full text-left text-sm">
-        <thead className="bg-paper-deep text-xs text-ink-muted">
-          <tr>
-            <th scope="col" className="px-3 py-2 font-medium">Fecha (hora de Santiago)</th>
-            <th scope="col" className="px-3 py-2 font-medium">Solicitada por</th>
-            <th scope="col" className="px-3 py-2 font-medium">Formato</th>
-            <th scope="col" className="px-3 py-2 font-medium">Datos</th>
-            <th scope="col" className="px-3 py-2 font-medium">Filtros</th>
-            <th scope="col" className="px-3 py-2 font-medium">sha256 del archivo</th>
-            <th scope="col" className="px-3 py-2 font-medium">Estado</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-rule">
-          {items.map((item) => {
-            const described = describeParams(item.params);
-            const format = item.format === "csv" && described.files > 1 ? "CSV (.zip)" : item.format.toUpperCase();
-            return (
-              <tr key={item.id} className="align-top">
-                <td className="px-3 py-2 whitespace-nowrap tabular-nums">{formatDateTime(item.createdAt)}</td>
-                <td className="px-3 py-2">{item.requestedBy}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{format}</td>
-                <td className="px-3 py-2">{described.data}</td>
-                <td className="px-3 py-2">{described.filters}</td>
-                <td className="px-3 py-2 font-mono text-xs break-all" translate="no">
-                  {item.sha256 ?? "—"}
-                </td>
-                <td className="px-3 py-2">{EXPORT_STATUS_LABEL[item.status] ?? item.status}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <TableFrame caption="Exportaciones anteriores">
+      <thead className="text-ink-muted">
+        <tr>
+          <th scope="col" className={TH}>Fecha (hora de Santiago)</th>
+          <th scope="col" className={TH}>Solicitada por</th>
+          <th scope="col" className={TH}>Formato</th>
+          <th scope="col" className={TH}>Datos</th>
+          <th scope="col" className={TH}>Filtros</th>
+          <th scope="col" className={TH}>sha256 del archivo</th>
+          <th scope="col" className={TH}>Estado</th>
+        </tr>
+      </thead>
+      <TBody>
+        {items.map((item) => {
+          const described = describeParams(item.params);
+          const format = item.format === "csv" && described.files > 1 ? "CSV (.zip)" : item.format.toUpperCase();
+          return (
+            <tr key={item.id} className={TR}>
+              <td className={`${TD} whitespace-nowrap tabular-nums`}>
+                <time dateTime={item.createdAt.toISOString()}>{formatDateTime(item.createdAt)}</time>
+              </td>
+              <td className={`${TD} [overflow-wrap:anywhere]`}>{item.requestedBy}</td>
+              <td className={`${TD} whitespace-nowrap`}>{format}</td>
+              <td className={TD}>{described.data}</td>
+              <td className={`${TD} [overflow-wrap:anywhere]`}>{described.filters}</td>
+              <td className={TD}>{item.sha256 ? <Hash value={item.sha256} /> : "—"}</td>
+              <td className={TD}>{EXPORT_STATUS_LABEL[item.status] ?? item.status}</td>
+            </tr>
+          );
+        })}
+      </TBody>
+    </TableFrame>
   );
 }
