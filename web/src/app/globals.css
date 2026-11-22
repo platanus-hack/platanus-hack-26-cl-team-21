@@ -17,6 +17,8 @@
   --color-rule: rgb(26 26 26 / 0.15);
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-serif: var(--font-newsreader), ui-serif, Georgia, serif;
+  /* State feedback only (GUIDELINES: ≤150 ms). A strong ease-out so short transitions still feel immediate. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 :root {
