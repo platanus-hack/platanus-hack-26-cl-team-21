@@ -43,6 +43,7 @@ import cl.observatorio.participante.pendant.PendantApi
 import cl.observatorio.participante.pendant.parsePendantAddress
 import cl.observatorio.participante.review.ClipStatus
 import cl.observatorio.participante.review.ReviewQueue
+import cl.observatorio.participante.review.prepareReviewVideo
 import cl.observatorio.participante.review.sendable
 import cl.observatorio.participante.ui.ClipDetailScreen
 import cl.observatorio.participante.ui.ConsentScreen
@@ -206,7 +207,7 @@ private fun App(prefs: SharedPreferences, createPendant: (String, String) -> Pen
             openClip,
             onChange = { reviewQueue.update(openClip.id, it) },
             onBack = { openClipId = null },
-            loadFrame = { number -> pendant.frame(openClip.id, number) },
+            prepareVideo = { onProgress -> prepareReviewVideo(pendant, openClip.id, File(cacheDir, "review"), onProgress) },
             onDecided = { before, message ->
                 openClipId = null
                 scope.launch {

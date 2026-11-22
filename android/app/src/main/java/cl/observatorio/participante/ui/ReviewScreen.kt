@@ -80,7 +80,7 @@ import cl.observatorio.participante.review.constrain
 import cl.observatorio.participante.review.needsReview
 import cl.observatorio.participante.review.sendable
 import cl.observatorio.participante.review.defaultSelection
-import cl.observatorio.participante.review.frameAt
+import cl.observatorio.participante.review.ReviewVideo
 import cl.observatorio.participante.review.freeGaps
 import cl.observatorio.participante.review.sharedSeconds
 import cl.observatorio.participante.ui.theme.Amber
@@ -200,7 +200,7 @@ fun ClipDetailScreen(
     onChange: ((Clip) -> Clip) -> Unit,
     onBack: () -> Unit,
     onDecided: (before: Clip, message: String) -> Unit,
-    loadFrame: suspend (number: Int) -> ByteArray,
+    prepareVideo: suspend (onProgress: (done: Int, total: Int) -> Unit) -> ReviewVideo,
 ) {
     val approvedMsg = stringResource(R.string.clip_approved_msg)
     val excludedMsg = stringResource(R.string.clip_excluded_msg)
@@ -284,17 +284,8 @@ fun ClipDetailScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
-            // shortcut: a still frame at the start of the selection, not playback. A fully excluded clip has nothing to show.
-            if (selection != null) {
-                val previewSecond = selection.start.roundToInt()
-                FramePreview(frameAt(clip, previewSecond), loadFrame)
-                Text(
-                    stringResource(R.string.clip_preview_caption, clockAt(clip, previewSecond)),
-                    style = MaterialTheme.typography.bodyMedium.merge(TabularNumbers),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-            }
+            // Only a pending clip has a span being edited to preview.
+            SessionVideo(clip, selection?.takeIf { clip.status == ClipStatus.PENDING }, prepareVideo)
 
             // Only a pending clip is editable: an approved one goes back to pending first, so nothing
             // gets shared that the participant didn't approve in its final form.
@@ -402,50 +393,8 @@ fun ClipDetailScreen(
     }
 }
 
-/** The session frame [number] from the pendant, or a placeholder while there is none to show. */
-@Composable
-private fun FramePreview(number: Int?, loadFrame: suspend (number: Int) -> ByteArray) {
-    var image by remember { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(number) {
-        if (number == null) return@LaunchedEffect
-        // While a slider thumb is dragged, only the frame where it stops is fetched.
-        delay(FRAME_PREVIEW_DEBOUNCE_MS)
-        // A frame that fails to load shows the placeholder: an older picture next to the new time would mislead.
-        image = try {
-            val bytes = loadFrame(number)
-            withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
-        } catch (e: IOException) {
-            null
-        }
-    }
-    Box(
-        Modifier
-            .padding(16.dp)
-            .fillMaxWidth()
-            .aspectRatio(4f / 3f)
-            .clip(MaterialTheme.shapes.small)
-            .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.small)
-            .gridPaper(MaterialTheme.colorScheme.outlineVariant),
-        contentAlignment = Alignment.Center,
-    ) {
-        val current = image
-        if (current != null) {
-            Image(current, stringResource(R.string.clip_preview_description), Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        } else {
-            Text(
-                stringResource(R.string.clip_preview_unavailable),
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-private const val FRAME_PREVIEW_DEBOUNCE_MS = 300L
-
 /** Diagonal stripes between two x positions, over a flat fill. */
-private fun DrawScope.hatch(left: Float, right: Float, fill: Color, line: Color) = clipRect(left, 0f, right, size.height) {
+internal fun DrawScope.hatch(left: Float, right: Float, fill: Color, line: Color) = clipRect(left, 0f, right, size.height) {
     drawRect(fill)
     val step = 5.dp.toPx()
     var x = left - size.height
@@ -516,7 +465,7 @@ private fun clipRange(clip: Clip): String {
 }
 
 /** Clock time of a point in the clip, the way participants remember moments; time into the clip when its clock is unknown. */
-private fun clockAt(clip: Clip, seconds: Int): String =
+internal fun clockAt(clip: Clip, seconds: Int): String =
     clip.startedAt?.let { clockFormat.format(it.plusSeconds(seconds.toLong())) } ?: mmss(seconds)
 
 internal fun mmss(seconds: Int) = "%02d:%02d".format(seconds / 60, seconds % 60)
