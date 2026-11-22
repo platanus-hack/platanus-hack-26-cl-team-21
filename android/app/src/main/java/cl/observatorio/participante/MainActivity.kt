@@ -206,6 +206,7 @@ private fun App(prefs: SharedPreferences, createPendant: (String, String) -> Pen
             openClip,
             onChange = { reviewQueue.update(openClip.id, it) },
             onBack = { openClipId = null },
+            loadFrame = { number -> pendant.frame(openClip.id, number) },
             onDecided = { before, message ->
                 openClipId = null
                 scope.launch {
@@ -246,9 +247,9 @@ private fun App(prefs: SharedPreferences, createPendant: (String, String) -> Pen
                     reviewQueue.clips,
                     reviewQueue.loading,
                     reviewQueue.pendantUnreachable,
-                    onOpen = if (demoMode) { clip -> openClipId = clip.id } else null,
-                    // Real sessions can't be reviewed yet, so only the demo has anything to send, and the demo's
-                    // synthetic sessions must never reach a real backend: debug builds only.
+                    onOpen = { clip -> openClipId = clip.id },
+                    // Sending real sessions is not enabled yet (MON-39). The demo's synthetic sessions must never reach a
+                    // real backend: debug builds only.
                     send = if (demoMode && BuildConfig.DEBUG) {
                         SendUi(sendError) {
                             val token = prefs.getString("participant_token", null) ?: return@SendUi

@@ -74,7 +74,7 @@ class ReviewQueueTest {
 
         queue.refresh(pendant)
 
-        assertEquals(listOf(Clip("s-1", Instant.ofEpochMilli(1_795_281_600_000), 360)), queue.clips.toList())
+        assertEquals(listOf(Clip("s-1", Instant.ofEpochMilli(1_795_281_600_000), 360, frameEpochsMs = listOf(1_795_281_600_000, 1_795_281_960_000))), queue.clips.toList())
         assertFalse(queue.pendantUnreachable)
         assertFalse(queue.loading)
     }
@@ -131,5 +131,37 @@ class ReviewQueueTest {
 
         assertEquals(ClipStatus.APPROVED, queue.clips.single().status)
         assertTrue(queue.pendantUnreachable)
+    }
+
+    @Test
+    fun `previews the last frame taken at or before the chosen clock time, across capture gaps`() {
+        val startMs = 1_795_281_600_000
+        // 2 fps for 10 s, then no frames for 50 s, then 2 fps again until 60 s.
+        val epochs = (0 until 20).map { startMs + it * 500L } + (0..20).map { startMs + 50_000 + it * 500L }
+        val clip = Clip("s-1", Instant.ofEpochMilli(startMs), 60, frameEpochsMs = epochs)
+
+        assertEquals(1, frameAt(clip, 0))
+        assertEquals(20, frameAt(clip, 30))
+        assertEquals(21, frameAt(clip, 50))
+        assertEquals(41, frameAt(clip, 60))
+        assertEquals(41, frameAt(clip, 90))
+        assertNull(frameAt(clip.copy(frameEpochsMs = emptyList()), 30))
+    }
+
+    @Test
+    fun `spreads the frames evenly when the clip has no clock time`() {
+        val clip = Clip("s-noclock", null, 60, frameEpochsMs = List(121) { 0L })
+
+        assertEquals(1, frameAt(clip, 0))
+        assertEquals(61, frameAt(clip, 30))
+        assertEquals(121, frameAt(clip, 60))
+    }
+
+    @Test
+    fun `a session without clock time is never sendable`() {
+        val clip = Clip("s-noclock", null, 60, ClipStatus.APPROVED)
+
+        assertFalse(clip.sendable)
+        assertTrue(clip.copy(startedAt = Instant.ofEpochMilli(1_795_281_600_000)).sendable)
     }
 }

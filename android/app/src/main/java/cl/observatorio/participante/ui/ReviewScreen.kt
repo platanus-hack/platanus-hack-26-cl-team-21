@@ -1,5 +1,7 @@
 package cl.observatorio.participante.ui
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
@@ -41,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -53,9 +57,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -73,6 +80,7 @@ import cl.observatorio.participante.review.constrain
 import cl.observatorio.participante.review.needsReview
 import cl.observatorio.participante.review.sendable
 import cl.observatorio.participante.review.defaultSelection
+import cl.observatorio.participante.review.frameAt
 import cl.observatorio.participante.review.freeGaps
 import cl.observatorio.participante.review.sharedSeconds
 import cl.observatorio.participante.ui.theme.Amber
@@ -81,7 +89,11 @@ import cl.observatorio.participante.ui.theme.Success
 import cl.observatorio.participante.ui.theme.SuccessDark
 import cl.observatorio.participante.ui.theme.ObservatorioTheme
 import cl.observatorio.participante.ui.theme.TabularNumbers
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -92,12 +104,12 @@ class SendUi(val error: Int?, val onSend: () -> Unit)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolean, onOpen: ((Clip) -> Unit)?, send: SendUi? = null) {
+fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolean, onOpen: (Clip) -> Unit, send: SendUi? = null) {
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     // Sent clips are done: they only count in the summary, never as rows.
     val listed = clips.filter { !it.sent }
     val sentCount = clips.size - listed.size
-    val allSent = onOpen != null && sentCount > 0 && listed.none { it.needsReview || it.sendable }
+    val allSent = sentCount > 0 && listed.none { it.needsReview || it.sendable }
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = { LargeTopAppBar(title = { Text(stringResource(R.string.tab_review)) }, scrollBehavior = scroll) },
@@ -119,7 +131,7 @@ fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolea
                     val pending = clips.count { it.needsReview }
                     if (allSent) {
                         SentSummary(sentCount)
-                    } else if (onOpen != null && clips.isNotEmpty()) {
+                    } else if (clips.isNotEmpty()) {
                         Highlighted(
                             "",
                             if (pending == 0) stringResource(R.string.review_all_done)
@@ -129,7 +141,7 @@ fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolea
                     }
                     if (!allSent) {
                         Text(
-                            stringResource(if (onOpen == null) R.string.review_real_note else R.string.review_privacy_note),
+                            stringResource(R.string.review_privacy_note),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 12.dp),
@@ -171,9 +183,9 @@ fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolea
                             } else meta,
                         )
                     },
-                    trailingContent = { if (onOpen != null) ClipStatusLabel(clip.status) },
+                    trailingContent = { ClipStatusLabel(clip.status) },
                     colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                    modifier = if (onOpen != null) Modifier.clickable { onOpen(clip) } else Modifier,
+                    modifier = Modifier.clickable { onOpen(clip) },
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
@@ -188,6 +200,7 @@ fun ClipDetailScreen(
     onChange: ((Clip) -> Clip) -> Unit,
     onBack: () -> Unit,
     onDecided: (before: Clip, message: String) -> Unit,
+    loadFrame: suspend (number: Int) -> ByteArray,
 ) {
     val approvedMsg = stringResource(R.string.clip_approved_msg)
     val excludedMsg = stringResource(R.string.clip_excluded_msg)
@@ -230,14 +243,18 @@ fun ClipDetailScreen(
                 val summary = stringResource(R.string.clip_shared_summary, duration(shared), duration(length))
                 when (clip.status) {
                     ClipStatus.PENDING -> {
-                        if (clip.excluded.isNotEmpty()) Text(summary, style = note, color = noteColor)
+                        if (clip.startedAt == null) {
+                            Text(stringResource(R.string.clip_no_clock), style = note, color = noteColor)
+                        } else if (clip.excluded.isNotEmpty()) {
+                            Text(summary, style = note, color = noteColor)
+                        }
                         MainActionButton(
                             stringResource(R.string.clip_approve),
                             onClick = {
                                 onChange { it.copy(status = ClipStatus.APPROVED) }
                                 onDecided(clip, approvedMsg)
                             },
-                            enabled = shared > 0,
+                            enabled = shared > 0 && clip.startedAt != null,
                         )
                         SecondaryActionButton(stringResource(R.string.clip_exclude_all), onClick = { confirmExcludeAll = true })
                     }
@@ -267,22 +284,15 @@ fun ClipDetailScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
-            // shortcut: no playback yet (milestone 3). Swap for a player over the session frames from PendantApi.frame.
-            Box(
-                Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .clip(MaterialTheme.shapes.small)
-                    .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.small)
-                    .gridPaper(MaterialTheme.colorScheme.outlineVariant),
-                contentAlignment = Alignment.Center,
-            ) {
+            // shortcut: a still frame at the start of the selection, not playback. A fully excluded clip has nothing to show.
+            if (selection != null) {
+                val previewSecond = selection.start.roundToInt()
+                FramePreview(frameAt(clip, previewSecond), loadFrame)
                 Text(
-                    stringResource(R.string.clip_preview_unavailable),
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
+                    stringResource(R.string.clip_preview_caption, clockAt(clip, previewSecond)),
+                    style = MaterialTheme.typography.bodyMedium.merge(TabularNumbers),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp),
                 )
             }
 
@@ -391,6 +401,48 @@ fun ClipDetailScreen(
         )
     }
 }
+
+/** The session frame [number] from the pendant, or a placeholder while there is none to show. */
+@Composable
+private fun FramePreview(number: Int?, loadFrame: suspend (number: Int) -> ByteArray) {
+    var image by remember { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(number) {
+        if (number == null) return@LaunchedEffect
+        // While a slider thumb is dragged, only the frame where it stops is fetched.
+        delay(FRAME_PREVIEW_DEBOUNCE_MS)
+        // A frame that fails to load shows the placeholder: an older picture next to the new time would mislead.
+        image = try {
+            val bytes = loadFrame(number)
+            withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+        } catch (e: IOException) {
+            null
+        }
+    }
+    Box(
+        Modifier
+            .padding(16.dp)
+            .fillMaxWidth()
+            .aspectRatio(4f / 3f)
+            .clip(MaterialTheme.shapes.small)
+            .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.small)
+            .gridPaper(MaterialTheme.colorScheme.outlineVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        val current = image
+        if (current != null) {
+            Image(current, stringResource(R.string.clip_preview_description), Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else {
+            Text(
+                stringResource(R.string.clip_preview_unavailable),
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private const val FRAME_PREVIEW_DEBOUNCE_MS = 300L
 
 /** Diagonal stripes between two x positions, over a flat fill. */
 private fun DrawScope.hatch(left: Float, right: Float, fill: Color, line: Color) = clipRect(left, 0f, right, size.height) {

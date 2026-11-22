@@ -33,15 +33,21 @@ fun parseSensorLine(line: String): SensorReading? {
     )
 }
 
-data class FramesSummary(val count: Int, val lastEpochMs: Long?)
+/** The `rtc_epoch_ms` of every row of frames.csv, in order: row i is frame file i + 1. */
+data class FramesSummary(val epochsMs: List<Long>) {
+    val count = epochsMs.size
 
-/** Counts the rows of frames.csv (`seq,rtc_epoch_ms,uptime_ms,bytes`) and keeps the last `rtc_epoch_ms`, or null when it is 0 (clock not synced). */
+    /** The last `rtc_epoch_ms`, or null when it is 0 (clock not synced). */
+    val lastEpochMs = epochsMs.lastOrNull()?.takeIf { it > 0 }
+}
+
+/** Reads the `rtc_epoch_ms` column of frames.csv (`seq,rtc_epoch_ms,uptime_ms,bytes`). */
 fun summarizeFrames(framesCsv: String): FramesSummary {
     val epochs = framesCsv.lineSequence()
         .drop(1)
         .mapNotNull { it.split(',').getOrNull(1)?.toLongOrNull() }
         .toList()
-    return FramesSummary(epochs.size, epochs.lastOrNull()?.takeIf { it > 0 })
+    return FramesSummary(epochs)
 }
 
 fun parseStatus(json: String): PendantStatus = JSONObject(json).run {
