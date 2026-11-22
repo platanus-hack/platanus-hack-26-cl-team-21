@@ -20,7 +20,7 @@ brew install postgresql@17 && brew services start postgresql@17
 
 Prefer Docker? `docker compose up -d postgres` and use the alternative URL in `.env.example`.
 
-Object storage runs in Docker either way: `docker compose up -d minio minio-init` starts MinIO on `localhost:9000` (console on `:9001`, `minioadmin`/`minioadmin`) and creates the `olm-media` bucket. The defaults in `.env.example` point at it. `npm run storage:test:integration` checks the round trip (presigned PUT, HEAD, GET, delete) against whatever `S3_*` points to.
+Object storage runs in Docker either way: `docker compose up -d minio minio-init` starts MinIO on `localhost:9000` (console on `:9001`, `minioadmin`/`minioadmin`) and creates the `olm-media` bucket. The defaults in `.env.example` point at it. Presigned URLs are signed against the host in `S3_ENDPOINT`, which an Android emulator can't reach as `localhost`. Either run `adb reverse tcp:9000 tcp:9000` (the emulator's `localhost:9000` then reaches MinIO; nothing else to configure), or start the web app with `S3_PUBLIC_ENDPOINT=http://10.0.2.2:9000 npm run dev:web` (use `http://<your-LAN-IP>:9000` for a physical phone). Don't put `S3_PUBLIC_ENDPOINT` in `.env`: `npm run test -w web` PUTs to those URLs from the host. The upload API rejects a `device_id` that isn't in `devices`, so register the pendant first (the demo mode's fake pendant is `3c71bf`: `insert into devices (serial, hardware_revision, form_factor) values ('3c71bf','demo','pendant')`). `npm run storage:test:integration` checks the round trip (presigned PUT, HEAD, GET, delete) against whatever `S3_*` points to.
 
 ```bash
 cp .env.example .env
