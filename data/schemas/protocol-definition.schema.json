@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://observatorio.local/schemas/protocol-definition.schema.json",
+  "title": "Protocol definition",
+  "description": "protocol_versions.definition: what the extraction worker reads to run a study protocol. Written by the researcher portal (protocol editor) and validated against this schema before a version is published; published versions are immutable and identified by definition_sha256 = sha256 of the canonical JSON of this document (object keys sorted recursively by UTF-16 code units as in RFC 8785, arrays in order, no insignificant whitespace, UTF-8). Event type labels and the generated JSON Schema for observations.attributes live in the event_types table; this document holds what the model needs. Keys not listed here (e.g. sampling settings added later) are allowed and preserved when a version is copied.",
+  "type": "object",
+  "required": ["event_types", "observation_prompt", "variables"],
+  "properties": {
+    "event_types": {
+      "description": "Keys of the event types this version detects, one event_types row each. Keys are stable across versions: longitudinal analyses group by key.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/key" }
+    },
+    "observation_prompt": {
+      "description": "Free-text instructions for the multimodal extraction model: what to look for in the selected clips and how to fill the variables. It must not ask for things listed in out_of_scope.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "variables": {
+      "description": "Structured variables extracted for each observation. Each one becomes a property of observations.attributes for the event types listed in applies_to.",
+      "type": "array",
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/variable" }
+    },
+    "out_of_scope": {
+      "description": "What this protocol explicitly does not measure (e.g. calories, portion_weight, nutrients for the eating vertical). Shown to researchers; the extraction model must not report it.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 200 }
+    },
+    "sensors": {
+      "description": "Sensor sampling per sensor_types key, e.g. {\"temperature_c\": {\"period_s\": 60}}. Not edited by the portal; kept when a version is copied.",
+      "type": "object"
+    },
+    "camera": {
+      "description": "Camera capture settings, e.g. {\"fps\": 2, \"resolution\": \"VGA\"}. Not edited by the portal; kept when a version is copied.",
+      "type": "object"
+    },
+    "pipeline": {
+      "description": "Optional overrides of the process_session pipeline settings (snake_case positive numbers, e.g. {\"merge_gap_s\": 30}); see resolveConfig in worker/src/process-session/protocol.ts. Not edited by the portal; kept when a version is copied.",
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "key": {
+      "description": "snake_case identifier.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "maxLength": 63
+    },
+    "variable": {
+      "type": "object",
+      "required": ["name", "type", "required", "applies_to"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/key" },
+        "type": {
+          "description": "enum: one of allowed_values. boolean, number, text: a single value. string_list: a list of strings, restricted to allowed_values when present.",
+          "enum": ["enum", "boolean", "number", "text", "string_list"]
+        },
+        "description": {
+          "description": "What the variable means, for the extraction model and for researchers.",
+          "type": "string",
+          "maxLength": 2000
+        },
+        "allowed_values": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 100 }
+        },
+        "required": {
+          "description": "Whether every observation of an applicable event type must report this variable.",
+          "type": "boolean"
+        },
+        "applies_to": {
+          "description": "Event type keys (from event_types) whose observations carry this variable.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/key" }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "enum" } } },
+          "then": { "required": ["allowed_values"] }
+        },
+        {
+          "if": { "properties": { "type": { "enum": ["boolean", "number", "text"] } } },
+          "then": { "not": { "required": ["allowed_values"] } }
+        }
+      ]
+    }
+  }
+}

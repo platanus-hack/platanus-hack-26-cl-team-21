@@ -13,6 +13,7 @@ export function StudyTabs({ code }: { code: string }) {
     { href: base, label: "Resumen", active: pathname === base },
     { href: `${base}/observations`, label: "Observaciones", active: within(`${base}/observations`) },
     { href: `${base}/export`, label: "Exportar", active: within(`${base}/export`) },
+    { href: `${base}/protocols`, label: "Protocolo", active: within(`${base}/protocols`) },
   ];
   return (
     <nav aria-label="Secciones del estudio" className="flex flex-wrap gap-x-1 border-b border-rule">
