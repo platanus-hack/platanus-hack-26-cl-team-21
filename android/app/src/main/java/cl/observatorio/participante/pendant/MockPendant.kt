@@ -135,7 +135,7 @@ class MockPendant(@Volatile var reachable: Boolean = true) : PendantApi {
         val temperature = String.format(Locale.ROOT, "%.1f", 23.4 + sin(seconds / 60.0) * 0.4)
         val noise = (seconds * 7919 % 41).toInt()
         val batteryMv = 7920 - ((epochMs - hubBootMs) / 30_000).toInt()
-        return "S,$seconds,${epochMs - hubBootMs},$temperature,47,${208 + noise % 9},${300 + noise % 13},${460 + noise * 3},$batteryMv"
+        return "S,$seconds,${epochMs - hubBootMs},$temperature,47,${640 + noise * 3},${noise % 30},$batteryMv"
     }
 
     private fun sessionJson(session: MockSession) = JSONObject()
@@ -159,7 +159,7 @@ class MockPendant(@Volatile var reachable: Boolean = true) : PendantApi {
     }
 
     private fun sensorsCsv(session: MockSession) = buildString {
-        appendLine("rtc_epoch,uptime_ms,temp_c,rh_pct,mq7,mq2,sound_p2p,batt_mv")
+        appendLine("rtc_epoch,uptime_ms,temp_c,rh_pct,co2_ppm,sound_active_pct,batt_mv")
         val end = session.endedAtMs ?: System.currentTimeMillis()
         for (epochMs in session.startedAtMs until end step 1000) {
             val row = sensorLine(epochMs).removePrefix("S,")

@@ -107,7 +107,7 @@ class HttpPendantTest {
                 "device_id":"bcc373", "firmware_version":"cam-0.1.0", "camera_ok":true, "sd_ok":true,
                 "sd_free_mb":63992, "capturing":false, "session_id":null, "frames":0, "clock_ok":true,
                 "epoch_ms":1795292320000, "battery_mv":-1, "ip":"192.168.4.1", "pending_commands":0,
-                "dropped_commands":0, "last_ack":"A,TIME,OK", "last_sensor_line":"S,1795292320,1000,24.8,47,0,0,8,",
+                "dropped_commands":0, "last_ack":"A,TIME,OK", "last_sensor_line":"S,1795292320,1000,24.8,47,640,8,",
                 "link_bad_checksums":0
             }
         """.trimIndent()

@@ -15,19 +15,21 @@ fun batteryPercentEstimate(batteryMv: Int): Int? {
     return (fraction * 100).toInt().coerceIn(0, 100)
 }
 
-/** Parses a hub sensor line, with or without its `*XX` checksum. Returns null when it isn't a well-formed `S` line. */
+/**
+ * Parses a hub sensor line, with or without its `*XX` checksum. Returns null when it isn't a well-formed `S` line.
+ * Empty epoch (camera clock not synced), DHT11, CO2 (warming up) and battery fields are missing values.
+ */
 fun parseSensorLine(line: String): SensorReading? {
     val fields = line.substringBefore('*').trim().split(',')
-    if (fields.size != 9 || fields[0] != "S") return null
+    if (fields.size != 8 || fields[0] != "S") return null
     return SensorReading(
-        rtcEpoch = fields[1].toLongOrNull() ?: return null,
+        rtcEpoch = fields[1].ifEmpty { null }?.let { it.toLongOrNull() ?: return null },
         uptimeMs = fields[2].toLongOrNull() ?: return null,
         temperatureC = fields[3].toDoubleOrNull(),
         humidityPct = fields[4].toDoubleOrNull(),
-        mq7Raw = fields[5].toIntOrNull() ?: return null,
-        mq2Raw = fields[6].toIntOrNull() ?: return null,
-        soundP2pRaw = fields[7].toIntOrNull() ?: return null,
-        batteryMv = fields[8].toIntOrNull(),
+        co2Ppm = fields[5].ifEmpty { null }?.let { it.toIntOrNull() ?: return null },
+        soundActivePct = fields[6].toIntOrNull() ?: return null,
+        batteryMv = fields[7].toIntOrNull(),
     )
 }
 

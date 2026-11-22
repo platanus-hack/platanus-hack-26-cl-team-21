@@ -84,11 +84,10 @@
     <string name="sensor_missing">Sin lectura</string>
     <string name="sensor_temperature">Temperatura</string>
     <string name="sensor_humidity">Humedad</string>
-    <string name="sensor_sound">Sonido</string>
-    <string name="sensor_co">CO · MQ-7</string>
-    <string name="sensor_gas">Gases · MQ-2</string>
-    <string name="sensor_raw_unit">bruto</string>
-    <string name="sensor_relative_note">Lecturas relativas, sin calibrar. No son mediciones certificadas.</string>
+    <string name="sensor_sound">Actividad sonora</string>
+    <string name="sensor_sound_unit">% del tiempo</string>
+    <string name="sensor_co2">CO₂ · MH-Z19C</string>
+    <string name="sensor_relative_note">Lecturas de referencia, no son mediciones certificadas. La actividad sonora no está en decibeles.</string>
     <string name="device_updated">Actualizado %1$s</string>
     <string name="device_server">Servidor</string>
     <string name="device_server_checking">Consultando…</string>

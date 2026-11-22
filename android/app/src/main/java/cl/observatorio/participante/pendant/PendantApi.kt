@@ -78,17 +78,19 @@ data class SessionInfo(
     val frames: Int,
 )
 
-/** One parsed `S,<epoch>,<uptime_ms>,<temp_c>,<rh_pct>,<mq7>,<mq2>,<sound_p2p>,<batt_mv>` line. */
+/** One parsed `S,<epoch>,<uptime_ms>,<temp_c>,<rh_pct>,<co2_ppm>,<sound_active_pct>,<batt_mv>` line. */
 data class SensorReading(
-    val rtcEpoch: Long,
+    /** Stamped by the camera; null until its clock is synced. */
+    val rtcEpoch: Long?,
+    /** The sensor hub's uptime. */
     val uptimeMs: Long,
     /** Null when the DHT11 read failed. */
     val temperatureC: Double?,
     val humidityPct: Double?,
-    /** Raw ADC values (0–1023): relative readings, not ppm or dB. */
-    val mq7Raw: Int,
-    val mq2Raw: Int,
-    val soundP2pRaw: Int,
+    /** MH-Z19C reading; null while it warms up (first 3 minutes) or when it doesn't answer. */
+    val co2Ppm: Int?,
+    /** Share of the last second above the KY-037 threshold (0–100): sound activity, not dB. */
+    val soundActivePct: Int,
     /** Null on external power. */
     val batteryMv: Int?,
 )

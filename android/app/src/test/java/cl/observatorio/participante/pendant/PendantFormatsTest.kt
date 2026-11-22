@@ -8,7 +8,7 @@ class PendantFormatsTest {
 
     @Test
     fun `parses a full sensor line as stored in last_sensor_line`() {
-        val reading = parseSensorLine("S,1795281600,12000345,23.4,47,212,305,512,7840")
+        val reading = parseSensorLine("S,1795281600,12000345,23.4,47,640,12,7840")
 
         assertEquals(
             SensorReading(
@@ -16,9 +16,8 @@ class PendantFormatsTest {
                 uptimeMs = 12000345,
                 temperatureC = 23.4,
                 humidityPct = 47.0,
-                mq7Raw = 212,
-                mq2Raw = 305,
-                soundP2pRaw = 512,
+                co2Ppm = 640,
+                soundActivePct = 12,
                 batteryMv = 7840,
             ),
             reading,
@@ -27,30 +26,34 @@ class PendantFormatsTest {
 
     @Test
     fun `ignores the checksum suffix of a raw link line`() {
-        assertEquals(7840, parseSensorLine("S,1795281600,12000345,23.4,47,212,305,512,7840*5A")?.batteryMv)
+        assertEquals(7840, parseSensorLine("S,1795281600,12000345,23.4,47,640,12,7840*5A")?.batteryMv)
     }
 
     @Test
-    fun `keeps empty DHT and battery fields as missing values`() {
-        val reading = parseSensorLine("S,1795281600,12000345,,,212,305,512,")
+    fun `keeps empty DHT, CO2 and battery fields as missing values`() {
+        val reading = parseSensorLine("S,1795281600,12000345,,,,12,")
 
         assertNull(reading?.temperatureC)
         assertNull(reading?.humidityPct)
+        assertNull(reading?.co2Ppm)
         assertNull(reading?.batteryMv)
-        assertEquals(512, reading?.soundP2pRaw)
+        assertEquals(12, reading?.soundActivePct)
     }
 
     @Test
-    fun `accepts epoch 0 before the RTC is synced`() {
-        assertEquals(0L, parseSensorLine("S,0,4000,23.4,47,212,305,512,7840")?.rtcEpoch)
+    fun `keeps an empty epoch as unknown until the camera clock is synced`() {
+        assertNull(parseSensorLine("S,,4000,23.4,47,640,12,")?.rtcEpoch)
+        assertEquals(4000L, parseSensorLine("S,,4000,23.4,47,640,12,")?.uptimeMs)
     }
 
     @Test
     fun `rejects lines that are not well-formed sensor lines`() {
         assertNull(parseSensorLine(""))
         assertNull(parseSensorLine("E,1795281600,12000345,BUTTON"))
-        assertNull(parseSensorLine("S,1795281600,12000345,23.4,47,212,305"))
-        assertNull(parseSensorLine("S,1795281600,12000345,23.4,47,abc,305,512,7840"))
+        assertNull(parseSensorLine("S,1795281600,12000345,23.4,47,640"))
+        assertNull(parseSensorLine("S,1795281600,12000345,23.4,47,212,305,512,7840"))
+        assertNull(parseSensorLine("S,1795281600,12000345,23.4,47,abc,12,7840"))
+        assertNull(parseSensorLine("S,abc,12000345,23.4,47,640,12,7840"))
     }
 
     @Test
