@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { clipKey, uploadFileKey, uploadPrefix } from "../src/keys";
+import { clipEdlKey, clipKey, uploadFileKey, uploadPrefix } from "../src/keys";
 
 const upload = "6f1c2b9e-3d4a-4f5b-8c7d-9e0f1a2b3c4d";
 
@@ -12,6 +12,7 @@ test("builds upload keys with the ADR layout", () => {
 
 test("builds clip keys", () => {
   assert.equal(clipKey("42"), "clips/42.mp4");
+  assert.equal(clipEdlKey("42"), "clips/42.edl.json");
 });
 
 test("rejects ids that would break the layout", () => {

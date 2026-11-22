@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
+import type { Readable } from "node:stream";
+import { text } from "node:stream/consumers";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -55,8 +57,14 @@ describe("process_session against the seeded database (Claude mocked)", { skip: 
     return { uploadId, framesCsv };
   }
 
+  // Where clips go: never the real bucket, whatever S3_* says in .env.
+  const clips = new Map<string, Buffer>();
+  const storage = {
+    put: async (key: string, body: Buffer | Readable) => void clips.set(key, Buffer.isBuffer(body) ? body : Buffer.from(await text(body))),
+  } as unknown as import("@observatorio/storage").Storage;
+
   const run = (uploadId: string, model = new FakeModel({ from: 15, to: 18 })) =>
-    processSession({ id: jobId, payload: { upload_id: uploadId } }, { model, source: new LocalDirSource(root) });
+    processSession({ id: jobId, payload: { upload_id: uploadId } }, { model, source: new LocalDirSource(root), storage });
 
   before(async () => {
     db = await import("@observatorio/db");
@@ -74,9 +82,24 @@ describe("process_session against the seeded database (Claude mocked)", { skip: 
     const { uploadId } = await upload();
     const dir = path.join(root, uploadId);
     // Serves the session's files by object key, the way the bucket does.
-    const storage = { getStream: async (key: string) => createReadStream(path.join(dir, path.basename(key))) } as unknown as ConstructorParameters<typeof StorageSource>[0];
-    const result = await processSession({ id: jobId, payload: { upload_id: uploadId } }, { model: new FakeModel({ from: 15, to: 18 }), source: new StorageSource(storage) });
+    const source = { getStream: async (key: string) => createReadStream(path.join(dir, path.basename(key))) } as unknown as ConstructorParameters<typeof StorageSource>[0];
+    const clipStorage = storage;
+    const result = await processSession({ id: jobId, payload: { upload_id: uploadId } }, { model: new FakeModel({ from: 15, to: 18 }), source: new StorageSource(source), storage: clipStorage });
     assert.ok(result);
+  });
+
+  it("publishes a clip and an edit list for each observation, cut from the original video", async () => {
+    const { uploadId } = await upload();
+    clips.clear();
+    const result = await run(uploadId);
+    assert.ok(result);
+    const [observation] = await db.db.select().from(db.observations).where(db.eq(db.observations.pipelineRunId, result.runId));
+    assert.deepEqual([...clips.keys()].sort(), [`clips/${observation.id}.edl.json`, `clips/${observation.id}.mp4`]);
+    assert.ok(clips.get(`clips/${observation.id}.mp4`)!.length > 1000);
+    const edl = JSON.parse(clips.get(`clips/${observation.id}.edl.json`)!.toString());
+    const [video] = await db.db.select().from(db.mediaAssets).where(db.eq(db.mediaAssets.id, uploadId));
+    assert.deepEqual(edl.source, { media_asset_id: uploadId, sha256: video.sha256 });
+    assert.deepEqual(edl.cuts, [{ startSecond: 12, endSecond: 23 }]); // the evidence 15-20 s, 3 s of context each side
   });
 
   it("writes a run with provenance, observations and evidence, and supersedes them on a re-run", async () => {

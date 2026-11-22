@@ -34,3 +34,8 @@ export function uploadFileKey(studyId: string, participantId: string, uploadId: 
 export function clipKey(observationId: string): string {
   return `clips/${segment("observation_id", observationId)}.mp4`;
 }
+
+/** `clips/<observation_id>.edl.json`: the edit list of that clip (source video hash and the cuts), next to it. */
+export function clipEdlKey(observationId: string): string {
+  return `clips/${segment("observation_id", observationId)}.edl.json`;
+}

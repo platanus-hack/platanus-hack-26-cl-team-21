@@ -16,6 +16,8 @@ import {
   syncBatchFiles,
   syncBatches,
 } from "@observatorio/db";
+import { createStorage, type Storage } from "@observatorio/storage";
+import { type ClipObservation, publishClips } from "./clips";
 import { AnthropicJsonModel, type JsonModel } from "./model";
 import { type AnalysisResult, analyzeSession, type ModelUse } from "./pipeline";
 import { type PipelineConfig, type ProtocolContext, promptSha256, resolveConfig } from "./protocol";
@@ -30,7 +32,8 @@ const pipelineVersion = () => {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type ProcessSessionDeps = { model?: JsonModel; source?: SessionSource };
+/** `storage` is where evidence clips go: the S3 bucket when configured, none (no clips) with only LOCAL_MEDIA_DIR. */
+export type ProcessSessionDeps = { model?: JsonModel; source?: SessionSource; storage?: Storage };
 
 export async function loadProtocolContext(protocolVersionId: string): Promise<ProtocolContext> {
   const [version] = await db.select().from(protocolVersions).where(eq(protocolVersions.id, protocolVersionId));
@@ -151,7 +154,10 @@ async function runPipeline(uploadId: string, jobId: number, deps: ProcessSession
         deps.model ?? new AnthropicJsonModel(),
         observed,
       );
-      await store(run.id, video, ctx, config, result);
+      const stored = await store(run.id, video, ctx, config, result);
+      // After the commit: the observations are the result, a clip is a cache of its evidence and may fail alone.
+      const storage = deps.storage ?? (process.env.S3_ENDPOINT ? createStorage() : undefined);
+      if (storage) await publishClips(storage, { mediaAssetId: video.id, sha256: video.sha256, videoPath: media.videoPath }, stored);
       return { runId: run.id, observations: result.episodes.length, result };
     } catch (error) {
       await db.update(pipelineRuns).set({ status: "failed", finishedAt: new Date(), error: String(error) }).where(eq(pipelineRuns.id, run.id));
@@ -170,7 +176,8 @@ async function store(
   ctx: ProtocolContext,
   config: PipelineConfig,
   result: AnalysisResult,
-) {
+): Promise<ClipObservation[]> {
+  const stored: ClipObservation[] = [];
   const typeIds = new Map(ctx.eventTypes.map((type) => [type.key, type.id]));
   await db.transaction(async (tx) => {
     // Earlier current observations of this video are superseded by this run (the only allowed update).
@@ -198,6 +205,7 @@ async function store(
         })
         .returning({ id: observations.id });
       await tx.insert(observationEvidence).values({ observationId: observation.id, mediaAssetId: video.id, ...episode.evidence });
+      stored.push({ id: observation.id, cuts: [{ startSecond: episode.evidence.startSecond, endSecond: episode.evidence.endSecond }] });
     }
     const { detection, extraction } = result.usage;
     await tx
@@ -216,4 +224,5 @@ async function store(
     await tx.update(mediaAssets).set({ status: "processed" }).where(eq(mediaAssets.id, video.id));
     await tx.update(syncBatches).set({ status: "processed", errorCode: null, errorMessage: null }).where(uploadInProgress(video.id));
   });
+  return stored;
 }
