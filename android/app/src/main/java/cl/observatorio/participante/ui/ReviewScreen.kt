@@ -79,7 +79,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolean, onOpen: (Clip) -> Unit) {
+fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolean, onOpen: ((Clip) -> Unit)?) {
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
@@ -91,7 +91,7 @@ fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolea
                 Column(Modifier.padding(16.dp)) {
                     // One headline: the app bar already says "Revisar", so this only states what's left.
                     val pending = clips.count { it.status == ClipStatus.PENDING }
-                    if (clips.isNotEmpty()) {
+                    if (onOpen != null && clips.isNotEmpty()) {
                         Highlighted(
                             "",
                             if (pending == 0) stringResource(R.string.review_all_done)
@@ -100,7 +100,7 @@ fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolea
                         )
                     }
                     Text(
-                        stringResource(R.string.review_privacy_note),
+                        stringResource(if (onOpen == null) R.string.review_real_note else R.string.review_privacy_note),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 12.dp),
@@ -141,9 +141,9 @@ fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolea
                             } else meta,
                         )
                     },
-                    trailingContent = { ClipStatusLabel(clip.status) },
+                    trailingContent = { if (onOpen != null) ClipStatusLabel(clip.status) },
                     colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                    modifier = Modifier.clickable { onOpen(clip) },
+                    modifier = if (onOpen != null) Modifier.clickable { onOpen(clip) } else Modifier,
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }

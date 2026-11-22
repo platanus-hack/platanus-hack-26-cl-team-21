@@ -1,6 +1,8 @@
 package cl.observatorio.participante
 
 import android.content.SharedPreferences
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -33,8 +35,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import cl.observatorio.participante.pendant.HttpPendant
 import cl.observatorio.participante.pendant.MockPendant
 import cl.observatorio.participante.pendant.PendantApi
+import cl.observatorio.participante.pendant.parsePendantAddress
 import cl.observatorio.participante.review.ReviewQueue
 import cl.observatorio.participante.ui.ClipDetailScreen
 import cl.observatorio.participante.ui.ConsentScreen
@@ -45,6 +49,8 @@ import cl.observatorio.participante.ui.ReviewScreen
 import cl.observatorio.participante.ui.WelcomeScreen
 import cl.observatorio.participante.ui.theme.ObservatorioTheme
 import kotlinx.coroutines.launch
+import java.net.HttpURLConnection
+import java.net.Proxy
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,18 +58,37 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("participant", MODE_PRIVATE)
         // Surface provides the background and onSurface content color for screens without a Scaffold (welcome).
-        setContent { ObservatorioTheme { Surface { App(prefs) } } }
+        setContent { ObservatorioTheme { Surface { App(prefs, ::createPendant) } } }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun createPendant(address: String, token: String): PendantApi {
+        val connectivity = getSystemService(ConnectivityManager::class.java)
+        return HttpPendant(requireNotNull(parsePendantAddress(address)), token) { url ->
+            val wifi = connectivity.allNetworks.firstOrNull { network ->
+                connectivity.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            }
+            wifi?.openConnection(url, Proxy.NO_PROXY) as HttpURLConnection?
+        }
     }
 }
 
-// shortcut: process-wide instances instead of DI. Milestone 2 swaps MockPendant for the HTTP client.
-private val pendant: PendantApi = MockPendant()
-private val reviewQueue = ReviewQueue()
-
 // shortcut: a linear onboarding, two tabs and one detail screen, so plain state instead of navigation-compose.
 // Add it when screens need deep links or branch out of this flow.
+private val demoPendant = MockPendant()
+private val demoQueue = ReviewQueue()
+
 @Composable
-private fun App(prefs: SharedPreferences) {
+private fun App(prefs: SharedPreferences, createPendant: (String, String) -> PendantApi) {
+    var demoMode by remember { mutableStateOf(prefs.getBoolean("pendant_demo", true)) }
+    var pendantAddress by remember { mutableStateOf(prefs.getString("pendant_address", null)) }
+    var pendantToken by remember { mutableStateOf(prefs.getString("pendant_token", null)) }
+    var editingPendant by rememberSaveable { mutableStateOf(false) }
+    val pendant = remember(demoMode, pendantAddress, pendantToken) {
+        if (demoMode) demoPendant else createPendant(requireNotNull(pendantAddress), requireNotNull(pendantToken))
+    }
+    val realQueue = remember(pendantAddress, pendantToken) { ReviewQueue() }
+    val reviewQueue = if (demoMode) demoQueue else realQueue
     var onboarded by rememberSaveable { mutableStateOf(prefs.getBoolean("onboarded", false)) }
     var step by rememberSaveable { mutableIntStateOf(0) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -71,6 +96,41 @@ private fun App(prefs: SharedPreferences) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val undoLabel = stringResource(R.string.undo)
+
+    if (editingPendant || (!onboarded && step == 3)) {
+        val goBack = { if (editingPendant) editingPendant = false else step = 2 }
+        BackHandler(onBack = goBack)
+        PairScreen(
+            savedAddress = pendantAddress,
+            savedToken = pendantToken,
+            createPendant = createPendant,
+            onBack = goBack,
+            onConnect = { address, token ->
+                prefs.edit()
+                    .putString("pendant_address", address)
+                    .putString("pendant_token", token)
+                    .putBoolean("pendant_demo", false)
+                    .putBoolean("onboarded", true)
+                    .apply()
+                pendantAddress = address
+                pendantToken = token
+                demoMode = false
+                onboarded = true
+                editingPendant = false
+                openClipId = null
+                tab = 1
+            },
+            onDemo = {
+                prefs.edit().putBoolean("pendant_demo", true).putBoolean("onboarded", true).apply()
+                if (!onboarded) tab = 0
+                demoMode = true
+                onboarded = true
+                editingPendant = false
+                openClipId = null
+            },
+        )
+        return
+    }
 
     if (!onboarded) {
         BackHandler(enabled = step > 0) { step-- }
@@ -81,10 +141,6 @@ private fun App(prefs: SharedPreferences) {
                 step = 2
             }
             2 -> ConsentScreen(onBack = { step = 1 }, onAccept = { step = 3 })
-            else -> PairScreen(onBack = { step = 2 }) {
-                prefs.edit().putBoolean("onboarded", true).apply()
-                onboarded = true
-            }
         }
         return
     }
@@ -131,11 +187,18 @@ private fun App(prefs: SharedPreferences) {
     ) { padding ->
         Box(Modifier.padding(padding)) {
             if (tab == 0) {
-                LaunchedEffect(Unit) { reviewQueue.refresh(pendant) }
-                ReviewScreen(reviewQueue.clips, reviewQueue.loading, reviewQueue.pendantUnreachable, onOpen = { openClipId = it.id })
+                LaunchedEffect(pendant) { reviewQueue.refresh(pendant) }
+                ReviewScreen(
+                    reviewQueue.clips,
+                    reviewQueue.loading,
+                    reviewQueue.pendantUnreachable,
+                    onOpen = if (demoMode) { clip -> openClipId = clip.id } else null,
+                )
             } else {
                 DeviceScreen(
                     pendant,
+                    demoMode = demoMode,
+                    onChangePendant = { editingPendant = true },
                     studyCode = prefs.getString("study_code", "").orEmpty(),
                     participantId = prefs.getString("participant_id", "").orEmpty(),
                     onLeaveStudy = {
@@ -143,7 +206,11 @@ private fun App(prefs: SharedPreferences) {
                         // already-uploaded data needs the study's withdrawal policy, and before real hardware the
                         // pendant's sessions must be tied to (or wiped for) a participant, or the next one reviews them.
                         prefs.edit().clear().apply()
-                        reviewQueue.clips.clear()
+                        demoQueue.clips.clear()
+                        realQueue.clips.clear()
+                        demoMode = true
+                        pendantAddress = null
+                        pendantToken = null
                         tab = 0
                         step = 0
                         onboarded = false

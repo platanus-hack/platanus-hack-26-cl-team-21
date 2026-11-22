@@ -38,15 +38,19 @@
 
     <!-- Onboarding: pairing -->
     <string name="pair_title">Conectar el colgante</string>
-    <string name="pair_body">Enciende el colgante y mantenlo cerca del teléfono.</string>
-    <string name="pair_nearby">Cerca de ti</string>
-    <string name="pair_searching">Buscando…</string>
-    <string name="pair_found">Disponible</string>
+    <string name="pair_body">Conecta el teléfono a la red Wi-Fi del colgante o a la misma red que el colgante.</string>
+    <string name="pair_address">Dirección del colgante</string>
+    <string name="pair_address_hint">Usa la IP local del colgante o su nombre terminado en .local.</string>
+    <string name="pair_token">Token del colgante</string>
     <string name="pair_connecting">Conectando…</string>
-    <string name="pair_connected">Conectado</string>
     <string name="pair_connect">Conectar</string>
-    <string name="pair_clock_synced">Reloj sincronizado con tu teléfono (desfase %1$s s).</string>
-    <string name="pair_finish">Listo</string>
+    <string name="pair_demo">Usar modo demo</string>
+    <string name="pair_mode_demo">Modo demo</string>
+    <string name="pair_mode_real">Colgante real</string>
+    <string name="pair_change">Cambiar</string>
+    <string name="pair_token_rejected">El colgante rechazó el token. Revísalo e inténtalo de nuevo.</string>
+    <string name="pair_invalid_response">El dispositivo no respondió como un colgante Rigo.</string>
+    <string name="pair_unreachable">No pudimos conectar. Revisa la red Wi-Fi y la dirección.</string>
 
     <string name="tab_device">Dispositivo</string>
     <string name="tab_review">Revisar</string>
@@ -95,6 +99,7 @@
     <string name="leave_study_confirm">Salir</string>
 
     <!-- Review -->
+    <string name="review_real_note">Sesiones del colgante. La reproducción y la aprobación de sesiones reales todavía no están disponibles.</string>
     <plurals name="review_pending">
         <item quantity="one">%1$d clip por revisar</item>
         <item quantity="other">%1$d clips por revisar</item>
