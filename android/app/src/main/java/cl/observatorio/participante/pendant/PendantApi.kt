@@ -10,7 +10,7 @@ interface PendantApi {
     /** GET /status */
     suspend fun status(): PendantStatus
 
-    /** POST /time?epoch=<s>. Queued on the device; confirmed later by `last_ack` and `clock_ok` in [status]. */
+    /** POST /time?epoch=<s>. Sets the camera clock right away; `clock_ok` in [status] turns true. */
     suspend fun syncTime(epochSeconds: Long)
 
     /** POST /capture/start?protocol=<v>. Returns the session id. */

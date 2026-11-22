@@ -70,6 +70,7 @@ bool resumePending = false;     // an unclosed session was found at boot; decide
 String lastSensorLine;
 long lastBattMv = -1;
 uint32_t badChecksums = 0;
+uint32_t unknownSensorLines = 0;
 
 // Commands to the Uno are resent until acknowledged ("A,<NAME>,OK").
 const uint8_t CMD_QUEUE_SIZE = 4;
@@ -195,6 +196,14 @@ String field(const String &line, int n) {
   return end < 0 ? line.substring(start) : line.substring(start, end);
 }
 
+const int SENSOR_LINE_FIELDS = 8;  // S,<epoch>,<uptime_ms>,<temp_c>,<rh_pct>,<co2_ppm>,<sound_active_pct>,<batt_mv>
+
+int fieldCount(const String &line) {
+  int count = 1;
+  for (char c : line) count += c == ',';
+  return count;
+}
+
 void handleHubLine(char *raw) {
   char *star = strrchr(raw, '*');
   if (!star) return;
@@ -205,6 +214,10 @@ void handleHubLine(char *raw) {
   }
   String line(raw);
   char type = line.charAt(0);
+  if (type == 'S' && fieldCount(line) != SENSOR_LINE_FIELDS) {
+    unknownSensorLines++;  // e.g. the retired Uno's 9-field line: its columns don't match sensors.csv
+    return;
+  }
   if (type == 'A') {
     lastAck = line;
     // "A,<NAME>,OK" acknowledges the queued "C,<NAME>,..." command.
@@ -401,7 +414,8 @@ void handleStatus() {
   body += "\"dropped_commands\":" + String(droppedCommands) + ",";
   body += "\"last_ack\":\"" + jsonEscape(lastAck) + "\",";
   body += "\"last_sensor_line\":\"" + jsonEscape(lastSensorLine) + "\",";
-  body += "\"link_bad_checksums\":" + String(badChecksums);
+  body += "\"link_bad_checksums\":" + String(badChecksums) + ",";
+  body += "\"unknown_sensor_lines\":" + String(unknownSensorLines);
   body += "}";
   sendJson(200, body);
 }

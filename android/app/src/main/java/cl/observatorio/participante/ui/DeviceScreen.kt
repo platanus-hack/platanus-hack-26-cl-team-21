@@ -366,7 +366,7 @@ private fun DeviceContentPreview() {
                     deviceId = "3c71bf", firmwareVersion = "cam-0.1.0", cameraOk = true, sdOk = true, sdFreeMb = 14_820,
                     capturing = true, sessionId = "3c71bf-1795280400", frames = 2400, clockOk = true,
                     epochMs = 1_795_281_600_000, batteryMv = 6950, ip = "192.168.1.47", pendingCommands = 0,
-                    droppedCommands = 0, lastAck = "A,HELLO,OK", lastSensorLine = "S,1795281600,12000000,,,212,305,512,6950",
+                    droppedCommands = 0, lastAck = "A,HELLO,OK", lastSensorLine = "S,1795281600,12000000,,,640,12,6950",
                     linkBadChecksums = 0,
                 ),
                 Instant.now(),

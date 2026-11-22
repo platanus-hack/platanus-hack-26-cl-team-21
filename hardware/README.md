@@ -207,6 +207,8 @@ The Uno reports battery voltage on A3 every second. Thresholds scale with `BATT_
 
 ## 6. Clock and synchronization
 
+> **With the Wi-Fi hub (ADR 0003)** there is no RTC: `POST /time` sets the camera clock directly (whole seconds, so up to ~1 s behind the phone), and the camera stamps frames and each hub line on arrival. The Uno description below is kept for reference.
+
 - The **RTC on the Uno is the master clock.** Every sensor line carries `rtc_epoch` (seconds) and `uptime_ms`.
 - The ESP32-CAM maps the Uno's RTC time onto its own `millis()`. Each line's epoch is whole seconds read slightly before sending, so every sample is a lower bound of the true offset: the firmware keeps the **maximum over a sliding 10-minute window** (two buckets, so slow drift is tracked), and resets the estimate on every `RTC_SET` and on jumps of more than 2 s (first fix). Expected accuracy is **~0.1–0.2 s**. Each frame is stamped with `rtc_epoch_ms`.
 - **Time sync:** the Android app calls `POST /time` on the ESP32-CAM, which queues `C,TIME,<epoch>` for the Uno. The Uno sets the RTC and emits an `E,RTC_SET,<old_epoch>` event, so the backend knows the drift. The DS1302 boots with an invalid date: until the first sync, epochs are empty/0 and frames only carry uptime.
@@ -241,7 +243,7 @@ Each line is `<payload>*<checksum>\n`, where the checksum is the XOR of all payl
 
 ### 7.4 Wi-Fi hub link (ESP32 hub → ESP32-CAM, UDP port 4210)
 
-One datagram per second with the same checksummed line as §7.1, minus the epoch and with the new columns: `S,,<uptime_ms>,<temp_c>,<rh_pct>,<co2_ppm>,<sound_active_pct>,<batt_mv>*HH`. Empty fields are missing values: `temp_c`/`rh_pct` when the DHT11 read failed, `co2_ppm` during the MH-Z19C's 3 min warm-up, `batt_mv` (not measured yet). `sound_active_pct` is the share of the second the KY-037 comparator was high. The hub sends to the broadcast address on a shared network, or to the gateway when it joined the camera's `OLM-<id>` access point. The camera fills the epoch with its own clock (left empty until `/time`), so `sensors.csv` and `/status.last_sensor_line` carry `S,<epoch>,...`.
+One datagram per second with the same checksummed line as §7.1, minus the epoch and with the new columns: `S,,<uptime_ms>,<temp_c>,<rh_pct>,<co2_ppm>,<sound_active_pct>,<batt_mv>*HH`. Empty fields are missing values: `temp_c`/`rh_pct` when the DHT11 read failed, `co2_ppm` during the MH-Z19C's 3 min warm-up, `batt_mv` (not measured yet). `sound_active_pct` is the share of a 0.6 s window, sampled every second, in which the KY-037 comparator was high. The hub sends to the broadcast address on a shared network, or to the gateway when it joined the camera's `OLM-<id>` access point. The camera fills the epoch with its own clock (left empty until `/time`), so `sensors.csv` and `/status.last_sensor_line` carry `S,<epoch>,...`.
 
 ### 7.2 Files on the microSD
 

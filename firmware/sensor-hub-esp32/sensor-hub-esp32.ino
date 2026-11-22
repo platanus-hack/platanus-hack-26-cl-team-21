@@ -17,7 +17,8 @@ constexpr int DhtPin = 15;
 constexpr int SoundDigitalPin = 4;
 constexpr uint16_t HubUdpPort = 4210;
 constexpr unsigned long Co2WarmupMs = 180000;
-constexpr unsigned long SampleWindowMs = 1000;
+constexpr unsigned long SendPeriodMs = 1000;
+constexpr unsigned long ReadReserveMs = 400;  // DHT11 (~25 ms) and MH-Z19C (300 ms timeout) after the sound window
 constexpr uint8_t ReadCo2Request[] = {0xFF, 0x01, 0x86, 0, 0, 0, 0, 0, 0x79};
 
 DHT dht(DhtPin, DHT11);
@@ -104,13 +105,24 @@ void setup() {
   Serial.println(FIRMWARE_VERSION);
 }
 
-void loop() {
-  if (WiFi.status() != WL_CONNECTED && wifiMulti.run() == WL_CONNECTED) {
-    Serial.printf("wifi: %s %s -> camera %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(),
-                  cameraAddress().toString().c_str());
-  }
+unsigned long nextSendMs = 0;
 
-  String line = buildSensorLine(soundActivePercentOver(SampleWindowMs));
+void connectWifiIfNeeded() {
+  if (WiFi.status() == WL_CONNECTED || wifiMulti.run() != WL_CONNECTED) return;
+  Serial.printf("wifi: %s %s -> camera %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(),
+                cameraAddress().toString().c_str());
+  nextSendMs = millis();
+}
+
+// One line every SendPeriodMs, so the camera's arrival stamps (whole seconds) don't skip seconds.
+void loop() {
+  connectWifiIfNeeded();
+  if (nextSendMs == 0) nextSendMs = millis();
+  nextSendMs += SendPeriodMs;
+  unsigned long windowMs = SendPeriodMs - ReadReserveMs;
+  String line = buildSensorLine(soundActivePercentOver(windowMs));
+  while ((long)(nextSendMs - millis()) > 0) delay(1);
   sendToCamera(line);
   Serial.println(line);
+  if ((long)(millis() - nextSendMs) > (long)SendPeriodMs) nextSendMs = millis();
 }
