@@ -6,7 +6,7 @@ export function ActionFeedback({ state, success }: { state: ActionState; success
   return (
     <div aria-live="polite">
       {state.status === "error" && (
-        <div role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-950/50 dark:text-red-300">
+        <div role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
           {state.errors.length === 1 ? (
             <p>{state.errors[0]}</p>
           ) : (
@@ -21,7 +21,7 @@ export function ActionFeedback({ state, success }: { state: ActionState; success
           )}
         </div>
       )}
-      {state.status === "saved" && success && <p className="text-sm text-emerald-800 dark:text-emerald-400">{success}</p>}
+      {state.status === "saved" && success && <p className="text-sm text-emerald-800">{success}</p>}
     </div>
   );
 }

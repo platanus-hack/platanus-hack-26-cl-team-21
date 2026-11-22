@@ -23,20 +23,20 @@ export function ConfirmAction({ action, summary, confirmLabel, tone, children }:
   const [state, formAction, pending] = useActionState(action, IDLE);
 
   return (
-    <details className="group rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <summary className={`cursor-pointer rounded-lg px-4 py-3 text-sm font-medium select-none hover:bg-zinc-50 dark:hover:bg-zinc-900 ${focusRing}`}>
+    <details className="group rounded-lg border border-zinc-200">
+      <summary className={`cursor-pointer rounded-lg px-4 py-3 text-sm font-medium select-none hover:bg-paper-deep ${focusRing}`}>
         {summary}
       </summary>
-      <form action={formAction} className="flex flex-col gap-3 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <div className="flex flex-col gap-2 text-sm text-zinc-700 dark:text-zinc-300">{children}</div>
+      <form action={formAction} className="flex flex-col gap-3 border-t border-zinc-200 px-4 py-3">
+        <div className="flex flex-col gap-2 text-sm text-ink-muted">{children}</div>
         <div>
           <button type="submit" disabled={pending} className={tone === "danger" ? dangerButtonClass : primaryButtonClass}>
             {pending ? "Guardando…" : confirmLabel}
           </button>
         </div>
         <div aria-live="polite" className="flex flex-col gap-3">
-          {state.status === "error" && <p className="text-sm text-red-700 dark:text-red-400">{state.message}</p>}
-          {state.status === "done" && <p className="text-sm text-emerald-800 dark:text-emerald-400">{state.message}</p>}
+          {state.status === "error" && <p className="text-sm text-red-700">{state.message}</p>}
+          {state.status === "done" && <p className="text-sm text-emerald-800">{state.message}</p>}
         </div>
         {state.status === "done" && state.pseudonym && state.enrollmentCode && (
           <EnrollmentCodeNotice pseudonym={state.pseudonym} code={state.enrollmentCode} />

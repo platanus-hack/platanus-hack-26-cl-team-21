@@ -11,7 +11,7 @@ type Props = PageProps<"/studies/[code]/participants">;
 
 export default function ParticipantsPage({ params }: Props) {
   return (
-    <Suspense fallback={<p className="text-sm text-zinc-500 dark:text-zinc-400">Cargando participantes…</p>}>
+    <Suspense fallback={<p className="text-sm text-ink-muted">Cargando participantes…</p>}>
       <Participants params={params} />
     </Suspense>
   );
@@ -33,12 +33,12 @@ async function Participants({ params }: Pick<Props, "params">) {
           Nuevo participante
         </Link>
       </div>
-      <p className="max-w-3xl text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="max-w-3xl text-sm text-ink-muted">
         Solo seudónimos: la identidad real de cada participante no se guarda en el portal. El código de inscripción se muestra una
         sola vez al crearlo o regenerarlo; aquí solo ves si la app ya lo canjeó y si su token sigue activo.
       </p>
       {items.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-zinc-300 p-6 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+        <p className="rounded-lg border border-dashed border-zinc-300 p-6 text-sm text-ink-muted">
           Este estudio todavía no tiene participantes. Crea el primero con “Nuevo participante”.
         </p>
       ) : (
@@ -52,7 +52,7 @@ function ParticipantsTable({ items, base }: { items: ParticipantListItem[]; base
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="border-b border-zinc-200 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+        <thead className="border-b border-zinc-200 text-ink-muted">
           <tr>
             <th scope="col" className="py-2 pr-4 font-medium">Participante</th>
             <th scope="col" className="py-2 pr-4 font-medium">Grupo</th>
@@ -69,22 +69,22 @@ function ParticipantsTable({ items, base }: { items: ParticipantListItem[]; base
           {items.map((item) => {
             const href = `${base}/${encodeURIComponent(item.pseudonym)}`;
             return (
-              <tr key={item.pseudonym} className="border-b border-zinc-100 align-top dark:border-zinc-900">
+              <tr key={item.pseudonym} className="border-b border-zinc-100 align-top">
                 <th scope="row" className="py-2 pr-4 font-mono font-normal" translate="no">
                   <Link href={href} className={`underline underline-offset-2 ${focusRing}`}>
                     {item.pseudonym}
                   </Link>
                 </th>
-                <td className="py-2 pr-4">{item.arm ?? <span className="text-zinc-500 dark:text-zinc-400">—</span>}</td>
+                <td className="py-2 pr-4">{item.arm ?? <span className="text-ink-muted">—</span>}</td>
                 <td className="py-2 pr-4">
                   {label(PARTICIPANT_STATUS_LABELS, item.status)}
                   {item.withdrawnAt && (
-                    <span className="block text-xs text-zinc-500 dark:text-zinc-400">{formatInstant(item.withdrawnAt, item.timezone)}</span>
+                    <span className="block text-xs text-ink-muted">{formatInstant(item.withdrawnAt, item.timezone)}</span>
                   )}
                 </td>
                 <td className="py-2 pr-4 font-mono" translate="no">{item.timezone}</td>
                 <td className="py-2 pr-4 font-mono" translate="no">
-                  {item.protocolLabel ?? <span className="font-sans text-zinc-500 dark:text-zinc-400">Sin protocolo vigente</span>}
+                  {item.protocolLabel ?? <span className="font-sans text-ink-muted">Sin protocolo vigente</span>}
                 </td>
                 <td className="py-2 pr-4">
                   <EnrollmentSummary state={item.enrollment} timeZone={item.timezone} />

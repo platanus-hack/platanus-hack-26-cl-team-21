@@ -10,7 +10,7 @@ export default function ProtocolVersionNotFound() {
   return (
     <div className="flex flex-col gap-2 py-8">
       <h2 className="text-xl font-semibold">Versión no encontrada</h2>
-      <p className="text-zinc-600 dark:text-zinc-400">
+      <p className="text-ink-muted">
         Este estudio no tiene una versión de protocolo con esa etiqueta. Puede que un borrador se haya renombrado o eliminado.
       </p>
       <Link href={protocolsHref(decodeURIComponent(code))} className="w-fit underline underline-offset-2">

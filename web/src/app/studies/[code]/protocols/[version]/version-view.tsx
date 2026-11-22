@@ -7,8 +7,8 @@ import { cardClass, focusRing, hintClass, sectionTitle } from "../styles";
 // Read-only views of a stored definition. Definitions are read defensively: versions created
 // before the editor (the seeded eating-v1) have no prompt or variables, and must still render.
 
-const muted = "text-sm text-zinc-600 dark:text-zinc-400";
-const codeBlock = "max-h-96 overflow-auto rounded-md bg-zinc-50 p-3 font-mono text-xs dark:bg-zinc-900";
+const muted = "text-sm text-ink-muted";
+const codeBlock = "max-h-96 overflow-auto rounded-md bg-paper-deep p-3 font-mono text-xs";
 
 export function VersionView({ version }: { version: ProtocolVersionDetail }) {
   const { definition } = version;
@@ -38,7 +38,7 @@ export function VersionView({ version }: { version: ProtocolVersionDetail }) {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-zinc-200 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+              <thead className="border-b border-zinc-200 text-xs text-ink-muted">
                 <tr>
                   <th scope="col" className="py-2 pr-4 font-medium">Clave</th>
                   <th scope="col" className="py-2 pr-4 font-medium">Nombre</th>
@@ -46,7 +46,7 @@ export function VersionView({ version }: { version: ProtocolVersionDetail }) {
                   <th scope="col" className="py-2 font-medium">Esquema de atributos</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              <tbody className="divide-y divide-zinc-100">
                 {version.eventTypes.map((eventType) => {
                   const names = hasVariablesKey
                     ? variables.filter((variable) => variable.applies_to.includes(eventType.key)).map((variable) => variable.name)
@@ -59,11 +59,11 @@ export function VersionView({ version }: { version: ProtocolVersionDetail }) {
                       <td className="py-2 pr-4">
                         {eventTypeLabel(eventType.key, eventType.label)}
                         {eventTypeLabel(eventType.key, eventType.label) !== eventType.label && (
-                          <span className="block text-xs text-zinc-500 dark:text-zinc-400">En el protocolo: {eventType.label}</span>
+                          <span className="block text-xs text-ink-muted">En el protocolo: {eventType.label}</span>
                         )}
                       </td>
                       <td className="py-2 pr-4 font-mono" translate="no">
-                        {names.length > 0 ? names.join(", ") : <span className="font-sans text-zinc-500 dark:text-zinc-400">ninguna</span>}
+                        {names.length > 0 ? names.join(", ") : <span className="font-sans text-ink-muted">ninguna</span>}
                       </td>
                       <td className="py-2">
                         <JsonDetails summary="Ver JSON Schema" value={eventType.attributesSchema} />
@@ -102,7 +102,7 @@ function VariableTable({ variables }: { variables: ReturnType<typeof readVariabl
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="border-b border-zinc-200 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+        <thead className="border-b border-zinc-200 text-xs text-ink-muted">
           <tr>
             <th scope="col" className="py-2 pr-4 font-medium">Nombre</th>
             <th scope="col" className="py-2 pr-4 font-medium">Tipo</th>
@@ -112,7 +112,7 @@ function VariableTable({ variables }: { variables: ReturnType<typeof readVariabl
             <th scope="col" className="py-2 font-medium">Descripción</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+        <tbody className="divide-y divide-zinc-100">
           {variables.map((variable) => (
             <tr key={variable.name} className="align-top">
               <td className="py-2 pr-4 font-mono" translate="no">
@@ -120,13 +120,13 @@ function VariableTable({ variables }: { variables: ReturnType<typeof readVariabl
               </td>
               <td className="py-2 pr-4">{VARIABLE_TYPE_LABELS[variable.type as VariableType] ?? variable.type}</td>
               <td className="py-2 pr-4 font-mono" translate="no">
-                {variable.allowed_values?.length ? variable.allowed_values.join(", ") : <span className="font-sans text-zinc-500 dark:text-zinc-400">—</span>}
+                {variable.allowed_values?.length ? variable.allowed_values.join(", ") : <span className="font-sans text-ink-muted">—</span>}
               </td>
               <td className="py-2 pr-4">{variable.required ? "Sí" : "No"}</td>
               <td className="py-2 pr-4 font-mono" translate="no">
                 {variable.applies_to.join(", ")}
               </td>
-              <td className="py-2">{variable.description ?? <span className="text-zinc-500 dark:text-zinc-400">—</span>}</td>
+              <td className="py-2">{variable.description ?? <span className="text-ink-muted">—</span>}</td>
             </tr>
           ))}
         </tbody>
@@ -165,7 +165,7 @@ function OutOfScopeList({ items }: { items: string[] }) {
           <p className={hintClass}>Este protocolo no mide lo siguiente; el modelo no debe reportarlo.</p>
           <ul className="mt-1 flex flex-wrap gap-2">
             {items.map((item) => (
-              <li key={item} className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs dark:bg-zinc-800" translate="no">
+              <li key={item} className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs" translate="no">
                 {item}
               </li>
             ))}

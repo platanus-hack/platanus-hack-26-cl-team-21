@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { DISPLAY_TIME_ZONE, formatTime } from "@/lib/format";
 import { publishDraftAction, saveDraftAction } from "@/lib/protocols/actions";
 import {
@@ -116,8 +116,12 @@ export function DraftEditor({
   const { eventRows, variableRows } = rows;
   const structure = serializeStructure(eventRows, variableRows);
   // The saved state is the server's: after a save the page re-renders with new `initial`.
-  const initialRows = toRows(initial);
-  const dirty = snapshot(fields, structure) !== snapshot(initialFields(initial), serializeStructure(initialRows.eventRows, initialRows.variableRows));
+  // Only changes when the server sends a new `initial`, not on every keystroke.
+  const savedSnapshot = useMemo(() => {
+    const initialRows = toRows(initial);
+    return snapshot(initialFields(initial), serializeStructure(initialRows.eventRows, initialRows.variableRows));
+  }, [initial]);
+  const dirty = snapshot(fields, structure) !== savedSnapshot;
 
   useEffect(() => {
     if (!dirty) return;
@@ -250,7 +254,7 @@ export function DraftEditor({
           el que ven investigadores y anotadores.
         </p>
         {eventRows.length === 0 ? (
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">Sin tipos de evento. Agrega al menos uno para publicar.</p>
+          <p className="text-sm text-ink-muted">Sin tipos de evento. Agrega al menos uno para publicar.</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {eventRows.map((row, i) => (
@@ -311,7 +315,7 @@ export function DraftEditor({
           esquema JSON de atributos de cada tipo de evento.
         </p>
         {variableRows.length === 0 ? (
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">Sin variables: las observaciones no llevarán atributos.</p>
+          <p className="text-sm text-ink-muted">Sin variables: las observaciones no llevarán atributos.</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {variableRows.map((row, i) => (
@@ -351,14 +355,14 @@ export function DraftEditor({
           />
         </label>
         {overlapping.length > 0 && (
-          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
             Revisa: {overlapping.length === 1 ? "la variable" : "las variables"} <span className="font-mono" translate="no">{overlapping.join(", ")}</span>{" "}
             {overlapping.length === 1 ? "coincide" : "coinciden"} con algo declarado fuera de alcance.
           </p>
         )}
       </section>
 
-      <div className="sticky bottom-0 flex flex-col gap-3 border-t border-zinc-200 bg-background py-3 dark:border-zinc-800">
+      <div className="sticky bottom-0 flex flex-col gap-3 border-t border-zinc-200 bg-background py-3">
         <ActionFeedback
           state={state}
           success={state.status === "saved" ? `Borrador guardado a las ${formatTime(Date.parse(state.savedAt), DISPLAY_TIME_ZONE)}.` : undefined}
@@ -401,7 +405,7 @@ function VariableFields({
   const takesValues = TYPES_WITH_ALLOWED_VALUES.includes(row.type);
   const subject = row.name.trim() || `${position}`;
   return (
-    <li className="flex flex-col gap-3 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+    <li className="flex flex-col gap-3 rounded-md border border-zinc-200 p-3">
       <div className="flex flex-wrap items-end gap-3">
         <label className={labelClass}>
           Nombre
@@ -434,7 +438,7 @@ function VariableFields({
             type="checkbox"
             checked={row.required}
             onChange={(event) => onChange({ required: event.target.checked })}
-            className={`accent-zinc-900 dark:accent-zinc-100 ${focusRing}`}
+            className={`accent-zinc-900 ${focusRing}`}
           />
           Obligatoria en cada observación
         </label>
@@ -469,7 +473,7 @@ function VariableFields({
         )}
       </div>
       <fieldset>
-        <legend className="mb-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">Aplica a</legend>
+        <legend className="mb-1 text-xs font-medium text-ink-muted">Aplica a</legend>
         {eventRows.length === 0 ? (
           <p className={hintClass}>Agrega primero un tipo de evento.</p>
         ) : (
@@ -484,7 +488,7 @@ function VariableFields({
                       appliesTo: event.target.checked ? [...row.appliesTo, eventRow.uid] : row.appliesTo.filter((uid) => uid !== eventRow.uid),
                     })
                   }
-                  className={`accent-zinc-900 dark:accent-zinc-100 ${focusRing}`}
+                  className={`accent-zinc-900 ${focusRing}`}
                 />
                 <span className="font-mono" translate="no">
                   {eventRow.key || `tipo ${i + 1}`}
@@ -502,11 +506,11 @@ function PublishConfirm({ pending, onCancel }: { pending: boolean; onCancel: () 
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => cancelRef.current?.focus(), []);
   return (
-    <div role="group" aria-label="Confirmar publicación" className="flex flex-col gap-2 rounded-md bg-amber-50 px-3 py-3 dark:bg-amber-950/50">
-      <p className="text-sm font-medium text-amber-950 dark:text-amber-100">
+    <div role="group" aria-label="Confirmar publicación" className="flex flex-col gap-2 rounded-md bg-amber-50 px-3 py-3">
+      <p className="text-sm font-medium text-amber-950">
         ¿Publicar esta versión?
       </p>
-      <p className="text-sm text-amber-900 dark:text-amber-200">
+      <p className="text-sm text-amber-900">
         Se guardan los cambios del formulario, se valida la definición contra el contrato y se calcula su sha256. Una versión publicada
         no se puede editar ni eliminar: solo copiar como un nuevo borrador o retirar. Si la validación falla, no se guarda nada.
       </p>
