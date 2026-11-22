@@ -1,6 +1,7 @@
 package cl.observatorio.participante.ui
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -55,6 +58,9 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -64,11 +70,15 @@ import cl.observatorio.participante.review.ClipStatus
 import cl.observatorio.participante.review.Interval
 import cl.observatorio.participante.review.addExcluded
 import cl.observatorio.participante.review.constrain
+import cl.observatorio.participante.review.needsReview
+import cl.observatorio.participante.review.sendable
 import cl.observatorio.participante.review.defaultSelection
 import cl.observatorio.participante.review.freeGaps
 import cl.observatorio.participante.review.sharedSeconds
 import cl.observatorio.participante.ui.theme.Amber
 import cl.observatorio.participante.ui.theme.Ink
+import cl.observatorio.participante.ui.theme.Success
+import cl.observatorio.participante.ui.theme.SuccessDark
 import cl.observatorio.participante.ui.theme.ObservatorioTheme
 import cl.observatorio.participante.ui.theme.TabularNumbers
 import kotlinx.coroutines.launch
@@ -77,21 +87,39 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
+/** State and action of the Review tab's send button. */
+class SendUi(val error: Int?, val onSend: () -> Unit)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolean, onOpen: ((Clip) -> Unit)?) {
+fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolean, onOpen: ((Clip) -> Unit)?, send: SendUi? = null) {
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    // Sent clips are done: they only count in the summary, never as rows.
+    val listed = clips.filter { !it.sent }
+    val sentCount = clips.size - listed.size
+    val allSent = onOpen != null && sentCount > 0 && listed.none { it.needsReview || it.sendable }
     Scaffold(
         modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
         topBar = { LargeTopAppBar(title = { Text(stringResource(R.string.tab_review)) }, scrollBehavior = scroll) },
+        bottomBar = {
+            // Sending is the participant's explicit last step: only once every clip is decided.
+            if (send != null && clips.none { it.needsReview } && clips.any { it.sendable }) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    send.error?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }
+                    MainActionButton(stringResource(R.string.send_action), onClick = send.onSend)
+                }
+            }
+        },
         contentWindowInsets = WindowInsets(0),
     ) { padding ->
         LazyColumn(contentPadding = padding) {
             item {
                 Column(Modifier.padding(16.dp)) {
                     // One headline: the app bar already says "Revisar", so this only states what's left.
-                    val pending = clips.count { it.status == ClipStatus.PENDING }
-                    if (onOpen != null && clips.isNotEmpty()) {
+                    val pending = clips.count { it.needsReview }
+                    if (allSent) {
+                        SentSummary(sentCount)
+                    } else if (onOpen != null && clips.isNotEmpty()) {
                         Highlighted(
                             "",
                             if (pending == 0) stringResource(R.string.review_all_done)
@@ -99,12 +127,14 @@ fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolea
                             style = MaterialTheme.typography.headlineMedium,
                         )
                     }
-                    Text(
-                        stringResource(if (onOpen == null) R.string.review_real_note else R.string.review_privacy_note),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 12.dp),
-                    )
+                    if (!allSent) {
+                        Text(
+                            stringResource(if (onOpen == null) R.string.review_real_note else R.string.review_privacy_note),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
                     if (loading && clips.isEmpty()) {
                         Text(
                             stringResource(R.string.review_loading),
@@ -128,7 +158,7 @@ fun ReviewScreen(clips: List<Clip>, loading: Boolean, pendantUnreachable: Boolea
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
-            items(clips, key = { it.id }) { clip ->
+            items(listed, key = { it.id }) { clip ->
                 ListItem(
                     headlineContent = { Text(clipRange(clip), style = MaterialTheme.typography.bodyLarge.merge(TabularNumbers)) },
                     supportingContent = {
@@ -387,6 +417,28 @@ private fun ClipStatusLabel(status: ClipStatus) = when (status) {
         MaterialTheme.colorScheme.onSurfaceVariant,
         outlined = true,
     )
+}
+
+/** Shown after sending, in place of the headline: everything the participant approved has left the phone. */
+@Composable
+private fun SentSummary(count: Int) {
+    Column(
+        Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(
+            Icons.Filled.CheckCircle,
+            contentDescription = null,
+            tint = if (isSystemInDarkTheme()) SuccessDark else Success,
+            modifier = Modifier.size(64.dp),
+        )
+        Text(stringResource(R.string.sent_title), style = MaterialTheme.typography.headlineMedium)
+        Text(
+            pluralStringResource(R.plurals.sent_body, count, count),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 /** Small non-interactive status tag. */

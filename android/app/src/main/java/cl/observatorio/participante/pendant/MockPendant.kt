@@ -33,9 +33,12 @@ class MockPendant(@Volatile var reachable: Boolean = true) : PendantApi {
     private var lastAck = "A,HELLO,OK"
     private val sessions = mutableListOf<MockSession>().apply {
         val now = System.currentTimeMillis()
-        add(MockSession("$deviceId-0-noclock-8000", now - 230 * MINUTE_MS, now - 227 * MINUTE_MS, clockKnown = false))
-        add(MockSession(sessionIdAt(now - 190 * MINUTE_MS), now - 190 * MINUTE_MS, now - 184 * MINUTE_MS))
-        add(MockSession(sessionIdAt(now - 95 * MINUTE_MS), now - 95 * MINUTE_MS, now - 91 * MINUTE_MS))
+        // The finished sessions are anchored to the UTC day: reopening the demo must give the same session ids,
+        // or a session already sent would look like a new one.
+        val anchor = now - now % DAY_MS
+        add(MockSession("$deviceId-0-noclock-8000", anchor - 230 * MINUTE_MS, anchor - 227 * MINUTE_MS, clockKnown = false))
+        add(MockSession(sessionIdAt(anchor - 190 * MINUTE_MS), anchor - 190 * MINUTE_MS, anchor - 184 * MINUTE_MS))
+        add(MockSession(sessionIdAt(anchor - 95 * MINUTE_MS), anchor - 95 * MINUTE_MS, anchor - 91 * MINUTE_MS))
         add(MockSession(sessionIdAt(now - 20 * MINUTE_MS), now - 20 * MINUTE_MS, null))
     }
 
@@ -174,6 +177,7 @@ class MockPendant(@Volatile var reachable: Boolean = true) : PendantApi {
 
     private companion object {
         const val MINUTE_MS = 60_000L
+        const val DAY_MS = 24 * 60 * MINUTE_MS
         const val FRAME_BYTES = 24_000
         const val RESPONSE_DELAY_MS = 150L
     }

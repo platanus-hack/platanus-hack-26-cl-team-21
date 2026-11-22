@@ -34,24 +34,34 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import cl.observatorio.participante.pendant.HttpPendant
 import cl.observatorio.participante.api.enroll
+import cl.observatorio.participante.pendant.HttpPendant
 import cl.observatorio.participante.pendant.MockPendant
 import cl.observatorio.participante.pendant.PendantApi
 import cl.observatorio.participante.pendant.parsePendantAddress
+import cl.observatorio.participante.review.ClipStatus
 import cl.observatorio.participante.review.ReviewQueue
+import cl.observatorio.participante.review.sendable
 import cl.observatorio.participante.ui.ClipDetailScreen
 import cl.observatorio.participante.ui.ConsentScreen
 import cl.observatorio.participante.ui.DeviceScreen
 import cl.observatorio.participante.ui.JoinStudyScreen
 import cl.observatorio.participante.ui.PairScreen
 import cl.observatorio.participante.ui.ReviewScreen
+import cl.observatorio.participante.ui.SendUi
+import cl.observatorio.participante.ui.SendingScreen
 import cl.observatorio.participante.ui.WelcomeScreen
 import cl.observatorio.participante.ui.theme.ObservatorioTheme
-import kotlinx.coroutines.launch
+import cl.observatorio.participante.upload.UploadException
+import cl.observatorio.participante.upload.Uploader
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.Proxy
 
@@ -79,7 +89,6 @@ class MainActivity : ComponentActivity() {
 // shortcut: a linear onboarding, two tabs and one detail screen, so plain state instead of navigation-compose.
 // Add it when screens need deep links or branch out of this flow.
 private val demoPendant = MockPendant()
-private val demoQueue = ReviewQueue()
 
 @Composable
 private fun App(prefs: SharedPreferences, createPendant: (String, String) -> PendantApi) {
@@ -90,7 +99,13 @@ private fun App(prefs: SharedPreferences, createPendant: (String, String) -> Pen
     val pendant = remember(demoMode, pendantAddress, pendantToken) {
         if (demoMode) demoPendant else createPendant(requireNotNull(pendantAddress), requireNotNull(pendantToken))
     }
-    val realQueue = remember(pendantAddress, pendantToken) { ReviewQueue() }
+    // Sessions sent in an earlier run stay saved, so the queue doesn't offer them for review again.
+    val wasSent = { id: String -> prefs.getStringSet("sent_clips", null)?.contains(id) == true }
+    val markHandled = { ids: List<String> ->
+        prefs.edit().putStringSet("sent_clips", prefs.getStringSet("sent_clips", emptySet()).orEmpty() + ids).apply()
+    }
+    val demoQueue = remember { ReviewQueue(wasSent) }
+    val realQueue = remember(pendantAddress, pendantToken) { ReviewQueue(wasSent) }
     val reviewQueue = if (demoMode) demoQueue else realQueue
     var onboarded by rememberSaveable { mutableStateOf(prefs.getBoolean("onboarded", false)) }
     // Enrolled but not paired yet (e.g. the app was restarted): resume at consent instead of asking for the code again.
@@ -100,6 +115,11 @@ private fun App(prefs: SharedPreferences, createPendant: (String, String) -> Pen
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val undoLabel = stringResource(R.string.undo)
+    val cacheDir = LocalContext.current.cacheDir
+    var sending by remember { mutableStateOf(false) }
+    var sendingClip by remember { mutableIntStateOf(0) }
+    var sendingTotal by remember { mutableIntStateOf(0) }
+    var sendError by remember { mutableStateOf<Int?>(null) }
 
     if (editingPendant || (!onboarded && step == 3)) {
         val goBack = { if (editingPendant) editingPendant = false else step = 2 }
@@ -172,6 +192,13 @@ private fun App(prefs: SharedPreferences, createPendant: (String, String) -> Pen
         return
     }
 
+    if (sending) {
+        // Nothing to go back to: the send can't be interrupted, and the review must not change while it runs.
+        BackHandler {}
+        SendingScreen(sendingClip, sendingTotal)
+        return
+    }
+
     val openClip = reviewQueue.clips.firstOrNull { it.id == openClipId }
     if (openClip != null) {
         BackHandler { openClipId = null }
@@ -220,6 +247,46 @@ private fun App(prefs: SharedPreferences, createPendant: (String, String) -> Pen
                     reviewQueue.loading,
                     reviewQueue.pendantUnreachable,
                     onOpen = if (demoMode) { clip -> openClipId = clip.id } else null,
+                    // Real sessions can't be reviewed yet, so only the demo has anything to send, and the demo's
+                    // synthetic sessions must never reach a real backend: debug builds only.
+                    send = if (demoMode && BuildConfig.DEBUG) {
+                        SendUi(sendError) {
+                            val token = prefs.getString("participant_token", null) ?: return@SendUi
+                            val uploader = Uploader(BuildConfig.API_BASE_URL, token, File(cacheDir, "uploads"))
+                            val toSend = reviewQueue.clips.filter { it.sendable }
+                            sendingTotal = toSend.size
+                            sendingClip = 1
+                            sending = true
+                            sendError = null
+                            scope.launch {
+                                var error: Int? = null
+                                try {
+                                    for ((i, clip) in toSend.withIndex()) {
+                                        sendingClip = i + 1
+                                        try {
+                                            // Saved inside the upload itself, so a cancellation (e.g. rotating the phone) can't forget a finished send.
+                                            uploader.send(pendant, clip) { markHandled(listOf(clip.id)) }
+                                            reviewQueue.update(clip.id) { it.copy(sent = true) }
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (e: Exception) {
+                                            // A clip that can't be built or sent must not block the others; the first failure is reported at the end.
+                                            error = error ?: when {
+                                                e is UploadException && e.httpStatus == 409 -> R.string.send_conflict
+                                                e is IOException -> R.string.send_offline
+                                                else -> R.string.send_failed
+                                            }
+                                        }
+                                    }
+                                    // Excluded and never uploadable (no synced clock): nothing to send, so don't ask again either.
+                                    markHandled(reviewQueue.clips.filter { it.status == ClipStatus.EXCLUDED && it.startedAt == null }.map { it.id })
+                                } finally {
+                                    sendError = error
+                                    sending = false
+                                }
+                            }
+                        }
+                    } else null,
                 )
             } else {
                 DeviceScreen(

@@ -25,10 +25,20 @@ data class Clip(
     val durationSeconds: Int,
     val status: ClipStatus = ClipStatus.PENDING,
     val excluded: List<Interval> = emptyList(),
+    /** Uploaded in this run: counted in the "all sent" summary, never listed. Later runs skip it through [ReviewQueue.wasSent]. */
+    val sent: Boolean = false,
 )
 
-/** Finished sessions pulled from the pendant and the participant's decisions on them, kept for the life of the process. */
-class ReviewQueue {
+val Clip.needsReview get() = status == ClipStatus.PENDING && !sent
+
+/** Decided, not yet sent and with a known start time: a session recorded before the first clock sync is not uploadable in v0. */
+val Clip.sendable get() = !sent && status != ClipStatus.PENDING && startedAt != null
+
+/**
+ * Finished sessions pulled from the pendant and the participant's decisions on them, kept for the life of the process.
+ * Sessions for which [wasSent] is true (saved by an earlier run) are not loaded again.
+ */
+class ReviewQueue(private val wasSent: (sessionId: String) -> Boolean = { false }) {
     val clips = mutableStateListOf<Clip>()
     var pendantUnreachable by mutableStateOf(false)
         private set
@@ -56,7 +66,7 @@ class ReviewQueue {
         }
         pendantUnreachable = false
         for (entry in entries) {
-            if (entry.active || clips.any { it.id == entry.sessionId }) continue
+            if (entry.active || wasSent(entry.sessionId) || clips.any { it.id == entry.sessionId }) continue
             val clip = try {
                 loadClip(pendant, entry.sessionId)
             } catch (e: PendantUnreachableException) {
