@@ -110,7 +110,6 @@
     <string name="leave_study_confirm">Salir</string>
 
     <!-- Review -->
-    <string name="review_real_note">Sesiones del colgante. La reproducción y la aprobación de sesiones reales todavía no están disponibles.</string>
     <plurals name="review_pending">
         <item quantity="one">%1$d clip por revisar</item>
         <item quantity="other">%1$d clips por revisar</item>
@@ -143,7 +142,10 @@
     <string name="send_failed">No pudimos enviar. Inténtalo de nuevo.</string>
 
     <!-- Clip detail -->
-    <string name="clip_preview_unavailable">Vista previa no disponible\n(colgante simulado)</string>
+    <string name="clip_preview_unavailable">Vista previa no disponible</string>
+    <string name="clip_preview_caption">Imagen al inicio de la selección · %1$s</string>
+    <string name="clip_preview_description">Imagen de la grabación al inicio de la selección</string>
+    <string name="clip_no_clock">Esta grabación no tiene hora porque el reloj del colgante no estaba sincronizado. Puedes excluirla, pero no aprobarla para enviar.</string>
     <string name="clip_exclude_range_title">Excluir un tramo</string>
     <string name="clip_exclude_range_hint">Elige el tramo que no quieres compartir.</string>
     <string name="clip_exclude_range">Excluir tramo</string>

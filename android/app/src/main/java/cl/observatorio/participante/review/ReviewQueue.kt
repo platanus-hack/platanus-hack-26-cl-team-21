@@ -27,9 +27,28 @@ data class Clip(
     val excluded: List<Interval> = emptyList(),
     /** Uploaded in this run: counted in the "all sent" summary, never listed. Later runs skip it through [ReviewQueue.wasSent]. */
     val sent: Boolean = false,
+    /** `rtc_epoch_ms` of each pendant frame, in order (frame number = index + 1); empty when unknown, and then there is no preview. */
+    val frameEpochsMs: List<Long> = emptyList(),
 )
 
 val Clip.needsReview get() = status == ClipStatus.PENDING && !sent
+
+/**
+ * The pendant frame number (from 1) shown for [seconds] into the clip: the last frame taken at or before that clock
+ * time, so gaps in the capture never shift the picture away from its time. Without clock times the frames are spread
+ * evenly over the clip. Null when the clip has no known frames.
+ */
+fun frameAt(clip: Clip, seconds: Int): Int? {
+    val epochs = clip.frameEpochsMs
+    if (epochs.isEmpty()) return null
+    val second = seconds.coerceIn(0, clip.durationSeconds)
+    val startMs = clip.startedAt?.toEpochMilli()
+    if (startMs != null && epochs.first() > 0) {
+        val targetMs = startMs + second * 1000L
+        return epochs.indexOfLast { it <= targetMs }.coerceAtLeast(0) + 1
+    }
+    return 1 + (second.toDouble() / clip.durationSeconds * (epochs.size - 1)).toInt()
+}
 
 /** Decided, not yet sent and with a known start time: a session recorded before the first clock sync is not uploadable in v0. */
 val Clip.sendable get() = !sent && status != ClipStatus.PENDING && startedAt != null
@@ -98,6 +117,11 @@ class ReviewQueue(private val wasSent: (sessionId: String) -> Boolean = { false 
         } else {
             frames.count / info.fps.coerceAtLeast(1)
         }
-        return Clip(sessionId, startedAtMs?.let(Instant::ofEpochMilli), durationSeconds.coerceAtLeast(1))
+        return Clip(
+            sessionId,
+            startedAtMs?.let(Instant::ofEpochMilli),
+            durationSeconds.coerceAtLeast(1),
+            frameEpochsMs = frames.epochsMs,
+        )
     }
 }

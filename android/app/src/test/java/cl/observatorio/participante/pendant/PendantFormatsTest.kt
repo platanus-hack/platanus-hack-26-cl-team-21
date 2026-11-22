@@ -78,18 +78,20 @@ class PendantFormatsTest {
     fun `summarizes frames csv with its count and last epoch`() {
         val csv = "seq,rtc_epoch_ms,uptime_ms,bytes\n1,1795281600000,4000,24000\n2,1795281600500,4500,24000\n"
 
-        assertEquals(FramesSummary(count = 2, lastEpochMs = 1795281600500), summarizeFrames(csv))
+        assertEquals(listOf(1795281600000L, 1795281600500L), summarizeFrames(csv).epochsMs)
+        assertEquals(1795281600500L, summarizeFrames(csv).lastEpochMs)
     }
 
     @Test
     fun `has no last epoch when frames were stamped before the clock was synced`() {
         val csv = "seq,rtc_epoch_ms,uptime_ms,bytes\n1,0,4000,24000\n2,0,4500,24000\n"
 
-        assertEquals(FramesSummary(count = 2, lastEpochMs = null), summarizeFrames(csv))
+        assertEquals(2, summarizeFrames(csv).count)
+        assertNull(summarizeFrames(csv).lastEpochMs)
     }
 
     @Test
     fun `counts no frames when frames csv has only its header`() {
-        assertEquals(FramesSummary(count = 0, lastEpochMs = null), summarizeFrames("seq,rtc_epoch_ms,uptime_ms,bytes\n"))
+        assertEquals(0, summarizeFrames("seq,rtc_epoch_ms,uptime_ms,bytes\n").count)
     }
 }
