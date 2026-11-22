@@ -74,56 +74,64 @@ export function ObservationList({
         return (
           <li
             key={o.id}
-            id={`obs-${o.id}`}
-            className="scroll-mt-6 rounded-lg border border-rule p-4 text-sm transition-[box-shadow,background-color] duration-150 ease-out target:bg-paper-deep target:ring-2 target:ring-secondary"
+            className="rounded-lg border border-rule text-sm transition-[box-shadow,background-color] duration-150 ease-out has-[:target]:bg-paper-deep has-[:target]:ring-2 has-[:target]:ring-secondary"
           >
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span
-                aria-hidden
-                className={`inline-block h-4 w-2 rounded-sm ${
-                  isHollowMarker(o.eventKey) ? "border-2 border-ink" : "bg-ink"
-                }`}
-              />
-              <span className="font-mono tabular-nums">{formatRange(o.startMs, o.endMs, timeZone)}</span>
-              <span className="text-ink-muted">({formatDuration((o.endMs - o.startMs) / 1000)})</span>
-              <span className="font-medium">{eventTypeLabel(o.eventKey, o.eventLabel)}</span>
-              <span className={`rounded-full px-2 py-0.5 text-xs ${reviewClass}`}>
-                Revisión humana: {label(REVIEW_STATUS_LABELS, o.reviewStatus).toLowerCase()}
-              </span>
-            </div>
+            {/* Collapsed by default. The timeline links to #obs-<id>, inside the details body: browsers
+                open a closed <details> when a fragment targets content inside it. */}
+            <details className="group">
+              <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-lg p-4 select-none hover:bg-paper-deep [&::-webkit-details-marker]:hidden">
+                <span aria-hidden className="text-xs text-ink-muted transition-transform group-open:rotate-90">
+                  ▶
+                </span>
+                <span
+                  aria-hidden
+                  className={`inline-block h-4 w-2 rounded-sm ${
+                    isHollowMarker(o.eventKey) ? "border-2 border-ink" : "bg-ink"
+                  }`}
+                />
+                <span className="font-mono tabular-nums">{formatRange(o.startMs, o.endMs, timeZone)}</span>
+                <span className="text-ink-muted">({formatDuration((o.endMs - o.startMs) / 1000)})</span>
+                <span className="font-medium">{eventTypeLabel(o.eventKey, o.eventLabel)}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${reviewClass}`}>
+                  Revisión humana: {label(REVIEW_STATUS_LABELS, o.reviewStatus).toLowerCase()}
+                </span>
+              </summary>
 
-            <dl className="mt-3 grid gap-x-6 gap-y-1 sm:grid-cols-[max-content_1fr]">
-              {formatAttributes(o.attributes).map((item) => (
-                <div key={item.key} className="contents">
-                  <dt className="text-ink-muted">{item.label}</dt>
-                  <dd className="[overflow-wrap:anywhere]">{item.value}</dd>
+              <div id={`obs-${o.id}`} className="scroll-mt-24 px-4 pb-4">
+                <dl className="grid gap-x-6 gap-y-1 sm:grid-cols-[max-content_1fr]">
+                  {formatAttributes(o.attributes).map((item) => (
+                    <div key={item.key} className="contents">
+                      <dt className="text-ink-muted">{item.label}</dt>
+                      <dd className="[overflow-wrap:anywhere]">{item.value}</dd>
+                    </div>
+                  ))}
+                  <dt className="text-ink-muted">Confianza del modelo</dt>
+                  <dd>
+                    <span className="tabular-nums">{formatConfidence(o.confidence)}</span>{" "}
+                    <span className="text-ink-muted">(0 a 1, no calibrada)</span>
+                  </dd>
+                  <dt className="text-ink-muted">Evidencia</dt>
+                  <dd>{plural(o.evidenceCount, "clip de video original", "clips de video original")}</dd>
+                  <dt className="text-ink-muted">Procedencia</dt>
+                  <dd className="text-ink-muted">
+                    Protocolo {o.protocolVersion} · modelo {o.modelVersion} · pipeline {o.pipelineVersion}
+                  </dd>
+                </dl>
+
+                {o.overlapsNotObserved.length > 0 && (
+                  <p className="mt-3 rounded-r-lg border-l-4 border-warning bg-paper-deep px-3 py-2 text-ink">
+                    Parte de este episodio cae en tiempo no observado (
+                    {o.overlapsNotObserved.map((s) => COVERAGE_STATUS_LABELS[s].toLowerCase()).join(", ")}).
+                    {o.observedMs <= 0 && " No se cuenta en el resumen del día."}
+                  </p>
+                )}
+
+                <div className="mt-3">
+                  <h4 className="mb-1 text-xs font-semibold tracking-wide text-ink-muted uppercase">Contexto de sensores durante el episodio</h4>
+                  <SensorContext stats={o.sensorContext} />
                 </div>
-              ))}
-              <dt className="text-ink-muted">Confianza del modelo</dt>
-              <dd>
-                <span className="tabular-nums">{formatConfidence(o.confidence)}</span>{" "}
-                <span className="text-ink-muted">(0 a 1, no calibrada)</span>
-              </dd>
-              <dt className="text-ink-muted">Evidencia</dt>
-              <dd>{plural(o.evidenceCount, "clip de video original", "clips de video original")}</dd>
-              <dt className="text-ink-muted">Procedencia</dt>
-              <dd className="text-ink-muted">
-                Protocolo {o.protocolVersion} · modelo {o.modelVersion} · pipeline {o.pipelineVersion}
-              </dd>
-            </dl>
-
-            {o.overlapsNotObserved.length > 0 && (
-              <p className="mt-3 rounded-r-lg border-l-4 border-warning bg-paper-deep px-3 py-2 text-ink">
-                Parte de este episodio cae en tiempo no observado (
-                {o.overlapsNotObserved.map((s) => COVERAGE_STATUS_LABELS[s].toLowerCase()).join(", ")}).
-                {o.observedMs <= 0 && " No se cuenta en el resumen del día."}
-              </p>
-            )}
-
-            <div className="mt-3">
-              <h4 className="mb-1 text-xs font-semibold tracking-wide text-ink-muted uppercase">Contexto de sensores durante el episodio</h4>
-              <SensorContext stats={o.sensorContext} />
-            </div>
+              </div>
+            </details>
           </li>
         );
       })}

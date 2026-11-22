@@ -22,7 +22,7 @@ export function CreateParticipantForm({ action, defaults, defaultTimeZone, timeZ
   if (state.status === "done" && state.pseudonym && state.enrollmentCode) {
     return (
       <div className="flex flex-col gap-4">
-        <p role="status" className="text-sm text-emerald-800 dark:text-emerald-400">
+        <p role="status" className="text-sm text-emerald-800">
           {state.message}
         </p>
         <EnrollmentCodeNotice pseudonym={state.pseudonym} code={state.enrollmentCode} />
@@ -42,7 +42,7 @@ export function CreateParticipantForm({ action, defaults, defaultTimeZone, timeZ
   const values = state.status === "error" ? state.values : undefined;
 
   return (
-    <form action={formAction} className="flex flex-col gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
+    <form action={formAction} className="flex flex-col gap-4 rounded-lg border border-zinc-200 p-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <label className={labelClass}>
           Seudónimo
@@ -125,7 +125,7 @@ export function CreateParticipantForm({ action, defaults, defaultTimeZone, timeZ
       </div>
 
       <div aria-live="polite">
-        {state.status === "error" && <p className="text-sm text-red-700 dark:text-red-400">{state.message}</p>}
+        {state.status === "error" && <p className="text-sm text-red-700">{state.message}</p>}
       </div>
     </form>
   );

@@ -18,13 +18,13 @@ export default function ProtocolsPage({ params }: Props) {
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-2">
         <h2 className={sectionTitle}>Versiones del protocolo</h2>
-        <p className="max-w-3xl text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="max-w-3xl text-sm text-ink-muted">
           Un protocolo define qué observa el modelo: las instrucciones de observación, los tipos de evento y las variables que se
           extraen de cada uno. Una versión publicada es inmutable y queda identificada por el sha256 de su definición; para cambiar
           el método se crea un borrador nuevo, se edita y se publica. Solo las versiones publicadas se pueden asignar a participantes.
         </p>
       </section>
-      <Suspense fallback={<p className="text-sm text-zinc-500 dark:text-zinc-400">Cargando versiones…</p>}>
+      <Suspense fallback={<p className="text-sm text-ink-muted">Cargando versiones…</p>}>
         <ProtocolsContent params={params} />
       </Suspense>
     </div>
@@ -50,7 +50,7 @@ async function ProtocolsContent({ params }: Pick<Props, "params">) {
         <h2 className="text-base font-semibold">
           Nuevo borrador
         </h2>
-        <p className="max-w-3xl text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="max-w-3xl text-sm text-ink-muted">
           Una copia conserva la definición de la versión base (sensores, cámara, fuera de alcance, instrucciones, tipos de evento y
           variables) y queda enlazada a ella como versión anterior.
         </p>
@@ -71,15 +71,15 @@ async function ProtocolsContent({ params }: Pick<Props, "params">) {
 function VersionTable({ studyCode, versions }: { studyCode: string; versions: ProtocolVersionSummary[] }) {
   if (versions.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-zinc-300 p-6 text-center text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
+      <p className="rounded-lg border border-dashed border-zinc-300 p-6 text-center text-sm text-ink-muted">
         Este estudio aún no tiene versiones de protocolo. Crea un borrador para empezar.
       </p>
     );
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+    <div className="overflow-x-auto rounded-lg border border-zinc-200">
       <table className="w-full text-left text-sm">
-        <thead className="bg-zinc-50 text-xs text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
+        <thead className="bg-zinc-50 text-xs text-ink-muted">
           <tr>
             <th scope="col" className="px-3 py-2 font-medium">Versión</th>
             <th scope="col" className="px-3 py-2 font-medium">Estado</th>
@@ -89,36 +89,36 @@ function VersionTable({ studyCode, versions }: { studyCode: string; versions: Pr
             <th scope="col" className="px-3 py-2 text-right font-medium">Participantes asignados</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+        <tbody className="divide-y divide-zinc-100">
           {versions.map((version) => (
             <tr key={version.id} className="align-top">
               <td className="px-3 py-2">
                 <Link href={versionHref(studyCode, version.versionLabel)} className="font-mono font-medium break-all underline underline-offset-2" translate="no">
                   {version.versionLabel}
                 </Link>
-                {version.changeNote && <span className="mt-0.5 block max-w-xs text-xs text-zinc-500 dark:text-zinc-400">{version.changeNote}</span>}
+                {version.changeNote && <span className="mt-0.5 block max-w-xs text-xs text-ink-muted">{version.changeNote}</span>}
               </td>
               <td className="px-3 py-2">
                 <ProtocolStatusBadge status={version.status} />
               </td>
               <td className="px-3 py-2 font-mono break-all" translate="no">
-                {version.parentLabel ?? <span className="font-sans text-zinc-500 dark:text-zinc-400">—</span>}
+                {version.parentLabel ?? <span className="font-sans text-ink-muted">—</span>}
               </td>
               <td className="px-3 py-2">
                 {version.publishedAt ? (
                   <>
                     <span className="whitespace-nowrap tabular-nums">{formatInstant(version.publishedAt)}</span>
-                    {version.publishedBy && <span className="block text-xs text-zinc-500 dark:text-zinc-400">por {version.publishedBy}</span>}
+                    {version.publishedBy && <span className="block text-xs text-ink-muted">por {version.publishedBy}</span>}
                   </>
                 ) : (
-                  <span className="text-zinc-500 dark:text-zinc-400">Sin publicar</span>
+                  <span className="text-ink-muted">Sin publicar</span>
                 )}
               </td>
               <td className="px-3 py-2 font-mono text-xs" translate="no">
                 {version.definitionSha256 ? (
                   <span title={version.definitionSha256}>{version.definitionSha256.slice(0, 12)}…</span>
                 ) : (
-                  <span className="font-sans text-zinc-500 dark:text-zinc-400">Se calcula al publicar</span>
+                  <span className="font-sans text-ink-muted">Se calcula al publicar</span>
                 )}
               </td>
               <td className="px-3 py-2 text-right tabular-nums">

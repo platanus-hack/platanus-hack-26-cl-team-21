@@ -15,7 +15,7 @@ type Props = PageProps<"/studies/[code]/participants/[pseudonym]/manage">;
 
 export default function ManageParticipantPage({ params }: Props) {
   return (
-    <Suspense fallback={<p className="text-sm text-zinc-500 dark:text-zinc-400">Cargando participante…</p>}>
+    <Suspense fallback={<p className="text-sm text-ink-muted">Cargando participante…</p>}>
       <ManageParticipant params={params} />
     </Suspense>
   );
@@ -35,7 +35,7 @@ async function ManageParticipant({ params }: Pick<Props, "params">) {
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-3">
-        <nav aria-label="Ruta" className="text-sm text-zinc-500 dark:text-zinc-400">
+        <nav aria-label="Ruta" className="text-sm text-ink-muted">
           <Link href={base} className={`hover:underline ${focusRing}`}>
             Participantes
           </Link>{" "}
@@ -55,25 +55,25 @@ async function ManageParticipant({ params }: Pick<Props, "params">) {
         </div>
         <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <dt className="text-zinc-500 dark:text-zinc-400">Estado</dt>
+            <dt className="text-ink-muted">Estado</dt>
             <dd>
               {label(PARTICIPANT_STATUS_LABELS, participant.status)}
-              {participant.withdrawnAt && <span className="block text-xs text-zinc-500 dark:text-zinc-400">desde el {formatInstant(participant.withdrawnAt, tz)}</span>}
+              {participant.withdrawnAt && <span className="block text-xs text-ink-muted">desde el {formatInstant(participant.withdrawnAt, tz)}</span>}
             </dd>
           </div>
           <div>
-            <dt className="text-zinc-500 dark:text-zinc-400">Grupo</dt>
+            <dt className="text-ink-muted">Grupo</dt>
             <dd>{participant.arm ?? "—"}</dd>
           </div>
           <div>
-            <dt className="text-zinc-500 dark:text-zinc-400">Zona horaria · inscrito el</dt>
+            <dt className="text-ink-muted">Zona horaria · inscrito el</dt>
             <dd>
               <span className="font-mono" translate="no">{tz}</span>
-              <span className="block text-xs text-zinc-500 dark:text-zinc-400">{formatInstant(participant.enrolledAt, tz)}</span>
+              <span className="block text-xs text-ink-muted">{formatInstant(participant.enrolledAt, tz)}</span>
             </dd>
           </div>
           <div>
-            <dt className="text-zinc-500 dark:text-zinc-400">Inscripción en la app</dt>
+            <dt className="text-ink-muted">Inscripción en la app</dt>
             <dd>
               <EnrollmentSummary state={participant.enrollment} timeZone={tz} />
             </dd>
@@ -88,7 +88,7 @@ async function ManageParticipant({ params }: Pick<Props, "params">) {
           Acciones
         </h3>
         {participant.status === "withdrawn" ? (
-          <p className="rounded-lg border border-dashed border-zinc-300 p-4 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
+          <p className="rounded-lg border border-dashed border-zinc-300 p-4 text-sm text-ink-muted">
             El participante está retirado: no admite más cambios. Sus datos ya recolectados se conservan y su periodo de estudio termina
             en la fecha de retiro.
           </p>
@@ -108,10 +108,10 @@ function ProtocolHistory({ participant }: { participant: ManagedParticipant }) {
         Protocolo asignado
       </h3>
       {participant.assignments.length === 0 ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">Sin protocolo asignado: el participante no tiene periodo de estudio.</p>
+        <p className="text-sm text-ink-muted">Sin protocolo asignado: el participante no tiene periodo de estudio.</p>
       ) : (
         <table className="w-full max-w-2xl text-left text-sm">
-          <thead className="border-b border-zinc-200 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+          <thead className="border-b border-zinc-200 text-ink-muted">
             <tr>
               <th scope="col" className="py-2 pr-4 font-medium">Versión</th>
               <th scope="col" className="py-2 pr-4 font-medium">Desde</th>
@@ -120,10 +120,10 @@ function ProtocolHistory({ participant }: { participant: ManagedParticipant }) {
           </thead>
           <tbody>
             {participant.assignments.map((assignment) => (
-              <tr key={assignment.validFrom.toISOString()} className="border-b border-zinc-100 dark:border-zinc-900">
+              <tr key={assignment.validFrom.toISOString()} className="border-b border-zinc-100">
                 <td className="py-2 pr-4 font-mono" translate="no">
                   {assignment.label}
-                  {assignment.current && <span className="ml-2 font-sans text-xs text-emerald-800 dark:text-emerald-400">vigente</span>}
+                  {assignment.current && <span className="ml-2 font-sans text-xs text-emerald-800">vigente</span>}
                 </td>
                 <td className="py-2 pr-4">{formatInstant(assignment.validFrom, tz)}</td>
                 <td className="py-2">{assignment.validTo ? formatInstant(assignment.validTo, tz) : "sin término"}</td>
@@ -138,9 +138,9 @@ function ProtocolHistory({ participant }: { participant: ManagedParticipant }) {
 
 function Unavailable({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-zinc-200 px-4 py-3 text-sm dark:border-zinc-800">
+    <div className="rounded-lg border border-zinc-200 px-4 py-3 text-sm">
       <p className="font-medium">{title}</p>
-      <p className="text-zinc-600 dark:text-zinc-400">{children}</p>
+      <p className="text-ink-muted">{children}</p>
     </div>
   );
 }

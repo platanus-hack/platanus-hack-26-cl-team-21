@@ -68,7 +68,7 @@ function Confirmation({
   const cancelRef = useRef<HTMLButtonElement>(null);
   useEffect(() => cancelRef.current?.focus(), []);
   return (
-    <div role="group" aria-label={confirmLabel} className="flex flex-col gap-2 rounded-md bg-red-50 px-3 py-3 text-sm text-red-950 dark:bg-red-950/40 dark:text-red-100">
+    <div role="group" aria-label={confirmLabel} className="flex flex-col gap-2 rounded-md bg-red-50 px-3 py-3 text-sm text-red-950">
       {children}
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={pending} className={dangerButton}>

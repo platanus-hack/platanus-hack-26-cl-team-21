@@ -19,7 +19,7 @@ type Props = PageProps<"/studies/[code]/protocols/[version]">;
 
 export default function ProtocolVersionPage({ params }: Props) {
   return (
-    <Suspense fallback={<p className="text-sm text-zinc-500 dark:text-zinc-400">Cargando versión…</p>}>
+    <Suspense fallback={<p className="text-sm text-ink-muted">Cargando versión…</p>}>
       <VersionContent params={params} />
     </Suspense>
   );
@@ -39,7 +39,7 @@ async function VersionContent({ params }: Pick<Props, "params">) {
         <Link href={protocolsHref(study.code)} className="underline underline-offset-2">
           Versiones del protocolo
         </Link>
-        <span className="text-zinc-500 dark:text-zinc-400"> / </span>
+        <span className="text-ink-muted"> / </span>
         <span className="font-mono break-all" translate="no" aria-current="page">
           {version.versionLabel}
         </span>
@@ -109,17 +109,17 @@ function VersionHeader({ version }: { version: ProtocolVersionDetail }) {
         </h2>
         <ProtocolStatusBadge status={version.status} />
       </div>
-      {version.changeNote && <p className="max-w-3xl text-sm text-zinc-600 dark:text-zinc-400">{version.changeNote}</p>}
+      {version.changeNote && <p className="max-w-3xl text-sm text-ink-muted">{version.changeNote}</p>}
       <dl className="grid max-w-3xl grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-sm">
-        <dt className="text-zinc-500 dark:text-zinc-400">Basada en</dt>
+        <dt className="text-ink-muted">Basada en</dt>
         <dd className="font-mono" translate="no">
           {version.parentLabel ?? <span className="font-sans">— (creada desde cero)</span>}
         </dd>
-        <dt className="text-zinc-500 dark:text-zinc-400">Publicada</dt>
+        <dt className="text-ink-muted">Publicada</dt>
         <dd>
           {version.publishedAt ? `${formatInstant(version.publishedAt)} (hora de Santiago)${version.publishedBy ? ` por ${version.publishedBy}` : ""}` : "Sin publicar"}
         </dd>
-        <dt className="text-zinc-500 dark:text-zinc-400">sha256 de la definición</dt>
+        <dt className="text-ink-muted">sha256 de la definición</dt>
         <dd>
           {version.definitionSha256 ? (
             <>
@@ -136,7 +136,7 @@ function VersionHeader({ version }: { version: ProtocolVersionDetail }) {
             "Se calcula al publicar."
           )}
         </dd>
-        <dt className="text-zinc-500 dark:text-zinc-400">Participantes asignados</dt>
+        <dt className="text-ink-muted">Participantes asignados</dt>
         <dd className="tabular-nums">
           <AssignedCount version={version} />
         </dd>
@@ -151,7 +151,7 @@ function ImmutableActions({ studyCode, version, suggestedLabel }: { studyCode: s
       <h2 className="text-base font-semibold">
         {version.status === "published" ? "Versión publicada: no se puede editar" : "Versión retirada: no se puede editar"}
       </h2>
-      <p className="max-w-3xl text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="max-w-3xl text-sm text-ink-muted">
         Las observaciones registradas con esta versión apuntan a esta definición exacta. Para cambiar el método, cópiala como un nuevo
         borrador, edítalo y publícalo.
       </p>

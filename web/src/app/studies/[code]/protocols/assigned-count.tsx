@@ -4,9 +4,9 @@ import type { ProtocolVersionSummary } from "@/lib/protocols/queries";
 export function AssignedCount({ version }: { version: Pick<ProtocolVersionSummary, "currentParticipants" | "totalParticipants"> }) {
   return (
     <>
-      {version.currentParticipants} <span className="text-zinc-500 dark:text-zinc-400">ahora</span>
+      {version.currentParticipants} <span className="text-ink-muted">ahora</span>
       {version.totalParticipants !== version.currentParticipants && (
-        <span className="block text-xs text-zinc-500 dark:text-zinc-400">{version.totalParticipants} en total</span>
+        <span className="block text-xs text-ink-muted">{version.totalParticipants} en total</span>
       )}
     </>
   );
