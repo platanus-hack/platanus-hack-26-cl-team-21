@@ -105,8 +105,9 @@ export const REVIEW_STATUS_LABELS: Record<string, string> = {
 
 export const REVIEW_STATUS_BADGE_CLASS: Record<string, string> = {
   pending: "bg-paper-deep text-ink",
-  confirmed: "bg-primary text-on-primary",
-  corrected: "bg-secondary text-on-primary",
+  // Outlined: on these pages the only fills are data and warnings.
+  confirmed: "ring-1 ring-inset ring-primary text-primary",
+  corrected: "ring-1 ring-inset ring-secondary text-secondary",
 };
 
 // --- Event types ---

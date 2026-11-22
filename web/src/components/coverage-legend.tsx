@@ -38,7 +38,7 @@ export function CoverageLegend({ showNoRecord }: { showNoRecord: boolean }) {
           </ul>
         </div>
       </div>
-      <p className="mt-3 text-xs text-ink-muted">
+      <p className="mt-3 text-sm text-ink-muted">
         Solo el tiempo observado tiene relleno sólido. El tiempo no observado no significa que no haya ocurrido nada: ahí no se
         reportan conteos. Las barras cubren el periodo de estudio del participante; la parte de un día fuera de él queda vacía.
       </p>

@@ -30,7 +30,7 @@ export function DaySummary({ day, timeZone }: { day: TimelineDay; timeZone: stri
         </p>
       )}
       <div className="rounded-lg bg-paper-deep p-4 text-sm">
-        <h4 className="mb-2 font-medium">Episodios en tiempo observado</h4>
+        <h3 className="mb-2 font-medium">Episodios en tiempo observado</h3>
         {summary.observedMs === 0 ? (
           <p className="text-ink-muted">
             No hubo tiempo observado este día, así que no se reportan conteos. Que no haya detecciones no significa que no haya
@@ -48,7 +48,7 @@ export function DaySummary({ day, timeZone }: { day: TimelineDay; timeZone: stri
               <ul className="space-y-1">
                 {summary.counts.map((c) => (
                   <li key={c.eventKey} className="flex flex-wrap items-baseline gap-x-2">
-                    <span className="text-lg font-semibold tabular-nums">{c.count}</span>
+                    <span className="font-serif text-2xl font-medium tabular-nums">{c.count}</span>
                     <span>{eventCountLabel(c.eventKey, c.eventLabel, c.count)}</span>
                     <span className="text-ink-muted">· duración observada {formatDuration(c.observedMs / 1000)}</span>
                   </li>
@@ -67,7 +67,7 @@ export function DaySummary({ day, timeZone }: { day: TimelineDay; timeZone: stri
       </div>
 
       <div className="rounded-lg bg-paper-deep p-4 text-sm">
-        <h4 className="mb-2 font-medium">Tiempo no observado</h4>
+        <h3 className="mb-2 font-medium">Tiempo no observado</h3>
         {notObservedMs === 0 ? (
           <p>{wholeDay ? "Todo el día fue observado." : "Todo el periodo de estudio de este día fue observado."}</p>
         ) : (
@@ -77,11 +77,12 @@ export function DaySummary({ day, timeZone }: { day: TimelineDay; timeZone: stri
               {ofDay}) sin observación:
             </p>
             <table className="w-full text-left">
+              <caption className="sr-only">Tiempo no observado por motivo</caption>
               <thead className="sr-only">
                 <tr>
-                  <th>Motivo</th>
-                  <th>Duración</th>
-                  <th>Intervalos</th>
+                  <th scope="col">Motivo</th>
+                  <th scope="col">Duración</th>
+                  <th scope="col">Intervalos</th>
                 </tr>
               </thead>
               <tbody>
@@ -93,7 +94,7 @@ export function DaySummary({ day, timeZone }: { day: TimelineDay; timeZone: stri
                         {COVERAGE_STATUS_LABELS[status]}
                       </span>
                     </td>
-                    <td className="py-0.5 pr-3 tabular-nums whitespace-nowrap">{formatDuration(ms / 1000)}</td>
+                    <td className="py-0.5 pr-3 text-right tabular-nums whitespace-nowrap">{formatDuration(ms / 1000)}</td>
                     <td className="py-0.5 tabular-nums text-ink-muted">
                       {notObservedBands
                         .filter((b) => b.status === status)
