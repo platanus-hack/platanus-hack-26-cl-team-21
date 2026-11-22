@@ -105,13 +105,12 @@ const REVIEWS = [
   { pseudonym: "P-002", day: 0, episode: "lunch", decision: "corrected" as const, note: "Episode ends later; dessert visible." },
 ];
 
-// sensor_types rows come from migration 0003 (the sensors the pendant reports).
+// sensor_types rows come from migrations 0003 and 0004 (the sensors the pendant reports).
 const SENSORS = [
   { key: "temperature_c", component: "DHT11" },
   { key: "humidity_pct", component: "DHT11" },
-  { key: "co_raw", component: "MQ-7" },
-  { key: "flammable_gas_raw", component: "MQ-2" },
-  { key: "sound_level_raw", component: "KY-037" },
+  { key: "co2_ppm", component: "MH-Z19C" },
+  { key: "sound_active_pct", component: "KY-037" },
   { key: "battery_mv", component: "2S-voltage-divider" },
 ] as const;
 
@@ -166,12 +165,10 @@ function sensorValue(sensorKey: (typeof SENSORS)[number]["key"], minuteOfDay: nu
       return round(21 + 2.5 * daylight + (nearMeal ? 1.5 : 0) + 0.3 * noise(seed), 1);
     case "humidity_pct":
       return round(48 - 6 * daylight + (nearMeal ? 4 : 0) + 1.5 * noise(seed));
-    case "co_raw":
-      return round(110 + (nearMeal ? 70 : 0) + 12 * noise(seed));
-    case "flammable_gas_raw":
-      return round(190 + (nearMeal ? 45 : 0) + 15 * noise(seed));
-    case "sound_level_raw":
-      return round(420 + (nearMeal ? 110 : 0) + 90 * noise(seed));
+    case "co2_ppm":
+      return round(650 + (nearMeal ? 250 : 0) + 40 * noise(seed));
+    case "sound_active_pct":
+      return Math.min(100, Math.max(0, round(8 + (nearMeal ? 25 : 0) + 6 * noise(seed))));
     case "battery_mv":
       return Math.max(6600, round(8300 - (minuteOfDay - 480) * 1.6));
   }

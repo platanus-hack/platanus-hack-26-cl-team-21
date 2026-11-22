@@ -29,6 +29,13 @@
       "when": 1795298365109,
       "tag": "0003_enrollment_and_uploads",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795342390131,
+      "tag": "0004_wifi_sensor_hub",
+      "breakpoints": true
     }
   ]
 }
