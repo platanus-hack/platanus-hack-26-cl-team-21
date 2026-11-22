@@ -4,7 +4,7 @@
  */
 export function ReadingGuide() {
   return (
-    <details className="max-w-3xl rounded-lg border border-rule p-4 text-sm">
+    <details className="rounded-lg border border-rule p-4 text-sm">
       <summary className="cursor-pointer font-medium text-secondary underline underline-offset-2">Cómo leer estos datos</summary>
       <dl className="mt-3 grid gap-3">
         <div>
