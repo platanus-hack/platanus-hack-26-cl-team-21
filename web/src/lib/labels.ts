@@ -155,7 +155,12 @@ export function attributeValue(key: string, value: unknown): string {
   if (Array.isArray(value)) return value.length === 0 ? "—" : value.map((v) => attributeValue(key, v)).join(", ");
   if (typeof value === "string") return ATTRIBUTE_VALUES[key]?.[value] ?? value;
   if (value === null || value === undefined) return "—";
-  return typeof value === "object" ? JSON.stringify(value) : String(value);
+  // Model output can nest objects: read them as "clave: valor" pairs, not raw JSON.
+  if (typeof value === "object") {
+    const entries = Object.entries(value);
+    return entries.length === 0 ? "—" : entries.map(([k, v]) => `${attributeLabel(k)}: ${attributeValue(k, v)}`).join("; ");
+  }
+  return String(value);
 }
 
 /** Known attributes first in protocol order (jsonb returns keys sorted by length), then the rest. */
