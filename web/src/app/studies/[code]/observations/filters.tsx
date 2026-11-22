@@ -9,16 +9,29 @@ import type { FilterOptions, ObservationFilters } from "@/lib/queries/observatio
 // Search param names of the observation list.
 export const FILTER_PARAMS = { participant: "participant", eventType: "event", reviewStatus: "review", date: "date" } as const;
 
-/** Page size of the list; "Mostrar más" raises `limit` by one page up to the max. */
-export const LIMIT_PARAM = "limit";
-export const PAGE_SIZE = 100;
-export const MAX_LIMIT = 1000;
+/** The list is paginated: `page` is 1-based and `size` is one of PAGE_SIZES (default DEFAULT_PAGE_SIZE). */
+export const PAGE_PARAM = "page";
+export const SIZE_PARAM = "size";
+export const PAGE_SIZES = [10, 25, 50, 100] as const;
+export const DEFAULT_PAGE_SIZE = 50;
 
 // Plain GET form: filters live in the URL and are applied on the server.
-export function ObservationFiltersForm({ action, options, filters }: { action: string; options: FilterOptions; filters: ObservationFilters }) {
+export function ObservationFiltersForm({
+  action,
+  options,
+  filters,
+  pageSize,
+}: {
+  action: string;
+  options: FilterOptions;
+  filters: ObservationFilters;
+  pageSize: number;
+}) {
   return (
     // Keyed by the active filters so the uncontrolled selects reset after navigating (e.g. "Limpiar").
     <Form key={JSON.stringify(filters)} action={action} className="flex flex-wrap items-end gap-3">
+      {/* Keeps the chosen page size when the filters change (no `page`: lands on page 1). */}
+      {pageSize !== DEFAULT_PAGE_SIZE && <input type="hidden" name={SIZE_PARAM} value={pageSize} />}
       <label className={FIELD_LABEL}>
         Participante
         <select name={FILTER_PARAMS.participant} defaultValue={filters.participant ?? ""} className={FIELD}>

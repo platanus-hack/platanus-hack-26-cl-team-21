@@ -94,8 +94,8 @@ export type ObservationPage = {
   counted: number;
 };
 
-/** The first `limit` observations by start time, plus totals over everything that matches. */
-export async function listObservations(studyId: string, filters: ObservationFilters, limit: number): Promise<ObservationPage> {
+/** `limit` observations by start time starting at `offset`, plus totals over everything that matches. */
+export async function listObservations(studyId: string, filters: ObservationFilters, limit: number, offset = 0): Promise<ObservationPage> {
   const conditions = [participantScope(studyId, filters)];
   if (filters.eventType) conditions.push(sql`et.key = ${filters.eventType}`);
   if (filters.reviewStatus) conditions.push(sql`o.human_review_status = ${filters.reviewStatus}`);
@@ -135,8 +135,8 @@ export async function listObservations(studyId: string, filters: ObservationFilt
     join protocol_versions pv on pv.id = r.protocol_version_id
     where ${sql.join(conditions, sql` and `)}
     ) q
-    order by q.started_at, q.pseudonym, q.id -- unique, so the LIMIT cut is stable between loads
-    limit ${limit}`);
+    order by q.started_at, q.pseudonym, q.id -- unique, so the page cuts are stable between loads
+    limit ${limit} offset ${offset}`);
   const first = result.rows[0];
   return {
     rows: result.rows, // the extra columns (started_at, total, counted) ride along unused
