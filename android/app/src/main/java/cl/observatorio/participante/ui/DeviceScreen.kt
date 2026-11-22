@@ -267,14 +267,12 @@ private fun BatteryItem(batteryMv: Int?) {
 
 @Composable
 private fun SensorReadings(reading: SensorReading) {
-    val raw = stringResource(R.string.sensor_raw_unit)
     val missing = stringResource(R.string.sensor_missing)
     val readings = listOf(
         Triple(stringResource(R.string.sensor_temperature), reading.temperatureC?.let { decimalFormat.format(it) }, "°C"),
         Triple(stringResource(R.string.sensor_humidity), reading.humidityPct?.let { numberFormat.format(it) }, "%"),
-        Triple(stringResource(R.string.sensor_sound), "${reading.soundP2pRaw}", raw),
-        Triple(stringResource(R.string.sensor_co), "${reading.mq7Raw}", raw),
-        Triple(stringResource(R.string.sensor_gas), "${reading.mq2Raw}", raw),
+        Triple(stringResource(R.string.sensor_co2), reading.co2Ppm?.let { numberFormat.format(it) }, "ppm"),
+        Triple(stringResource(R.string.sensor_sound), numberFormat.format(reading.soundActivePct), stringResource(R.string.sensor_sound_unit)),
     )
     // One column when the user has a large font size, so labels and values never collide.
     val columns = if (LocalDensity.current.fontScale > 1.3f) 1 else 2
@@ -368,7 +366,7 @@ private fun DeviceContentPreview() {
                     deviceId = "3c71bf", firmwareVersion = "cam-0.1.0", cameraOk = true, sdOk = true, sdFreeMb = 14_820,
                     capturing = true, sessionId = "3c71bf-1795280400", frames = 2400, clockOk = true,
                     epochMs = 1_795_281_600_000, batteryMv = 6950, ip = "192.168.1.47", pendingCommands = 0,
-                    droppedCommands = 0, lastAck = "A,HELLO,OK", lastSensorLine = "S,1795281600,12000000,,,212,305,512,6950",
+                    droppedCommands = 0, lastAck = "A,HELLO,OK", lastSensorLine = "S,1795281600,12000000,,,640,12,6950",
                     linkBadChecksums = 0,
                 ),
                 Instant.now(),

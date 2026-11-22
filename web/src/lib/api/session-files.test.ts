@@ -8,9 +8,11 @@ describe("session files", () => {
   });
 
   test("skips empty values, battery -1 and rows without a clock", () => {
-    const readings = parseSensorReadings("rtc_epoch,uptime_ms,temp_c,rh_pct,mq7,mq2,sound_p2p,batt_mv\n100,1,22.5,,300,400,500,-1\n0,2,1,1,1,1,1,1\n101,3,23,50,300,400,500,7400\n");
+    const readings = parseSensorReadings("rtc_epoch,uptime_ms,temp_c,rh_pct,co2_ppm,sound_active_pct,batt_mv\n100,1,22.5,,,12,-1\n0,2,1,1,1,1,1\n101,3,23,50,640,0,7400\n");
     assert.deepEqual(readings.get("temperature_c")?.map((r) => r.value), [22.5, 23]);
     assert.equal(readings.get("humidity_pct")?.length, 1);
+    assert.deepEqual(readings.get("co2_ppm")?.map((r) => r.value), [640]);
+    assert.deepEqual(readings.get("sound_active_pct")?.map((r) => r.value), [12, 0]);
     assert.deepEqual(readings.get("battery_mv")?.map((r) => r.value), [7400]);
   });
 

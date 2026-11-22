@@ -6,17 +6,19 @@
 #include <WiFiMulti.h>
 #include <ESPmDNS.h>
 #include <WebServer.h>
+#include <WiFiUdp.h>
 #include <FS.h>
 #include <SD_MMC.h>
 #include "esp_camera.h"
 #include "secrets.h"  // copy secrets.example.h -> secrets.h (git-ignored)
 
 // ---------- Configuration ----------
-#define FIRMWARE_VERSION "cam-0.1.0"
+#define FIRMWARE_VERSION "cam-0.2.0"
 #define DEFAULT_FPS 2
 #define FRAME_SIZE FRAMESIZE_VGA  // 640x480
 #define JPEG_QUALITY 12           // 0-63, lower = better
 #define LINK_BAUD 19200
+#define HUB_UDP_PORT 4210         // sensor hub lines over Wi-Fi (firmware/sensor-hub-esp32)
 #define PIN_LINK_RX 13            // from Uno D9 (via divider)
 #define PIN_LINK_TX 12            // to Uno D8 (strapping pin: Uno side must not pull up)
 #define PIN_FLASH_LED 4
@@ -43,6 +45,7 @@
 WebServer server(80);
 WiFiMulti wifiMulti;
 HardwareSerial hubLink(2);
+WiFiUDP hubUdp;
 
 String deviceId;
 bool sdOk = false, camOk = false;
@@ -67,6 +70,7 @@ bool resumePending = false;     // an unclosed session was found at boot; decide
 String lastSensorLine;
 long lastBattMv = -1;
 uint32_t badChecksums = 0;
+uint32_t unknownSensorLines = 0;
 
 // Commands to the Uno are resent until acknowledged ("A,<NAME>,OK").
 const uint8_t CMD_QUEUE_SIZE = 4;
@@ -192,6 +196,14 @@ String field(const String &line, int n) {
   return end < 0 ? line.substring(start) : line.substring(start, end);
 }
 
+const int SENSOR_LINE_FIELDS = 8;  // S,<epoch>,<uptime_ms>,<temp_c>,<rh_pct>,<co2_ppm>,<sound_active_pct>,<batt_mv>
+
+int fieldCount(const String &line) {
+  int count = 1;
+  for (char c : line) count += c == ',';
+  return count;
+}
+
 void handleHubLine(char *raw) {
   char *star = strrchr(raw, '*');
   if (!star) return;
@@ -202,6 +214,10 @@ void handleHubLine(char *raw) {
   }
   String line(raw);
   char type = line.charAt(0);
+  if (type == 'S' && fieldCount(line) != SENSOR_LINE_FIELDS) {
+    unknownSensorLines++;  // e.g. the retired Uno's 9-field line: its columns don't match sensors.csv
+    return;
+  }
   if (type == 'A') {
     lastAck = line;
     // "A,<NAME>,OK" acknowledges the queued "C,<NAME>,..." command.
@@ -221,8 +237,12 @@ void handleHubLine(char *raw) {
     }
   }
   if (type == 'S') {
+    // The Wi-Fi hub has no RTC: an empty epoch is stamped with the camera's clock on arrival.
+    if (field(line, 1).length() == 0 && clockOk) {
+      line = "S," + String((unsigned long)(nowEpochMs() / 1000)) + line.substring(2);
+    }
     lastSensorLine = line;
-    String batt = field(line, 8);
+    String batt = field(line, 7);
     lastBattMv = batt.length() ? batt.toInt() : -1;  // -1 = external power
     if (capturing) appendLine(sessionDir + "/sensors.csv", line.substring(2));
   } else if (type == 'E') {
@@ -234,6 +254,18 @@ void handleHubLine(char *raw) {
       stopSession();
     }
   }
+}
+
+void pollHubUdp() {
+  int size = hubUdp.parsePacket();
+  if (size <= 0) return;
+  char packet[sizeof(rxBuf)];
+  int len = hubUdp.read(packet, sizeof(packet) - 1);
+  if (len <= 0) return;
+  packet[len] = '\0';
+  char *end = strpbrk(packet, "\r\n");
+  if (end) *end = '\0';
+  handleHubLine(packet);
 }
 
 void pollLink() {
@@ -271,7 +303,7 @@ bool startSession(const String &protocol) {
   protocolVersion = protocol.length() ? protocol : "unknown";
   frameSeq = 0;
   appendLine(sessionDir + "/frames.csv", "seq,rtc_epoch_ms,uptime_ms,bytes");
-  appendLine(sessionDir + "/sensors.csv", "rtc_epoch,uptime_ms,temp_c,rh_pct,mq7,mq2,sound_p2p,batt_mv");
+  appendLine(sessionDir + "/sensors.csv", "rtc_epoch,uptime_ms,temp_c,rh_pct,co2_ppm,sound_active_pct,batt_mv");
   appendLine(sessionDir + "/events.csv", "rtc_epoch,uptime_ms,type,value");
   writeSessionJson(false);
   // Survives resets and the privacy switch: on boot the session is resumed (see resumeSession).
@@ -382,7 +414,8 @@ void handleStatus() {
   body += "\"dropped_commands\":" + String(droppedCommands) + ",";
   body += "\"last_ack\":\"" + jsonEscape(lastAck) + "\",";
   body += "\"last_sensor_line\":\"" + jsonEscape(lastSensorLine) + "\",";
-  body += "\"link_bad_checksums\":" + String(badChecksums);
+  body += "\"link_bad_checksums\":" + String(badChecksums) + ",";
+  body += "\"unknown_sensor_lines\":" + String(unknownSensorLines);
   body += "}";
   sendJson(200, body);
 }
@@ -393,8 +426,10 @@ void handleTime() {
   bool digits = epoch.length() == 10;
   for (char c : epoch) digits = digits && isDigit(c);
   if (!digits) return sendJson(400, "{\"error\":\"epoch must be 10 digits (unix seconds)\"}");
-  if (!enqueueCommand("C,TIME," + epoch)) return sendJson(503, "{\"error\":\"command queue full\"}");
-  sendJson(202, "{\"status\":\"queued\"}");  // confirmed by last_ack / RTC_SET event
+  // The Wi-Fi hub has no RTC, so the camera keeps the session clock itself.
+  clockOk = false;
+  updateClock(strtoul(epoch.c_str(), nullptr, 10));
+  sendJson(202, "{\"status\":\"set\"}");
 }
 
 void handleCaptureStart() {
@@ -572,10 +607,12 @@ void setup() {
   const char *headers[] = {"Authorization"};
   server.collectHeaders(headers, 1);
   server.begin();
+  hubUdp.begin(HUB_UDP_PORT);
 }
 
 void loop() {
   pollLink();
+  pollHubUdp();
   serviceCommands();
   server.handleClient();
 

@@ -36,10 +36,11 @@ export const deviceAssignments = pgTable(
 
 // Modular hardware: a new sensor is a new row here, never a new column anywhere.
 export const sensorTypes = pgTable("sensor_types", {
-  // 'temperature_c', 'humidity_pct' (DHT11), 'co_raw' (MQ-7), 'flammable_gas_raw' (MQ-2),
-  // 'sound_level_raw' (KY-037), 'battery_mv' (2S pack voltage). Uncalibrated sensors keep a *_raw
+  // 'temperature_c', 'humidity_pct' (DHT11), 'co2_ppm' (MH-Z19C), 'sound_active_pct' (KY-037 digital
+  // output), 'battery_mv' (2S pack voltage); 'co_raw' (MQ-7), 'flammable_gas_raw' (MQ-2) and
+  // 'sound_level_raw' (KY-037 analog) come from the retired Uno hub. Uncalibrated sensors keep a *_raw
   // key: they are relative context, not certified units (AGENTS.md §2.5). The pendant's types are
-  // inserted by migration 0003, so ingestion works without the demo seed.
+  // inserted by migrations 0003 and 0004, so ingestion works without the demo seed.
   key: text().primaryKey(),
   unit: text().notNull(),
   description: text(),

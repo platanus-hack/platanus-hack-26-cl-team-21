@@ -35,9 +35,9 @@ Work is tracked in **Linear**. Personal research and decision notes live in each
 
 ```text
 [Pendant]                         [Android app]                   [Backend on Render]
-Arduino Uno (sensor hub) --UART--> ESP32-CAM                      web/ (Next.js)
-  DHT11, MQ-7 (CO), MQ-2,           camera (JPEG frames), SD card   - ingestion API
-  KY-037, RTC, buzzer, buttons      Wi-Fi HTTP API  ------------>   - researcher portal
+ESP32 (sensor hub) --Wi-Fi UDP-->  ESP32-CAM                      web/ (Next.js)
+  MH-Z19C (CO2), DHT11,             camera (JPEG frames), SD card   - ingestion API
+  KY-037 (digital)                  Wi-Fi HTTP API  ------------>   - researcher portal
                                     (status, time, sessions)        - Postgres
                                          |                              |
                                          v                              v  jobs table
@@ -49,10 +49,10 @@ Arduino Uno (sensor hub) --UART--> ESP32-CAM                      web/ (Next.js)
 
 ### Hardware (`hardware/`, `firmware/`)
 
-Full proposal in [`hardware/README.md`](./hardware/README.md); decision record in `docs/decisions/0001-prototype-hardware-architecture.md`.
+Full proposal in [`hardware/README.md`](./hardware/README.md); decision records in `docs/decisions/0001-prototype-hardware-architecture.md` and [`0003-wifi-sensor-hub.md`](./docs/decisions/0003-wifi-sensor-hub.md), which replaces the Uno.
 
-- **Single chest-worn box (prototype):** size and power only constrain the prototype; production would be a custom pendant. Inside: ESP32-CAM (camera) + Arduino Uno (sensor hub) + 2S battery + LM2596 → 5 V.
-- **The Uno is the sensor hub and master clock:** DHT11, MQ-7, MQ-2, KY-037, RTC, buzzer, event button, privacy switch, battery voltage. It sends checksummed ASCII lines to the ESP32-CAM over UART.
+- **Single chest-worn box (prototype):** size and power only constrain the prototype; production would be a custom pendant. Inside: ESP32-CAM (camera) + a second ESP32-CAM board without camera or microSD (sensor hub) + 2S battery + LM2596 → 5 V.
+- **The ESP32 sensor hub** reads the MH-Z19C (CO2), the DHT11 and the KY-037 digital output, and sends one checksummed `S,...` line per second to the camera over Wi-Fi (UDP). It has no RTC: **the camera owns the clock**, set by the phone with `POST /time`, and stamps each line on arrival. The MQ sensors, buzzer and button are out of the prototype.
 - **The ESP32-CAM** saves JPEG frames (2 fps, VGA) plus `frames.csv`, `sensors.csv`, `events.csv` and `session.json` per session on the microSD. It exposes a token-protected **HTTP API on the local network**: it joins the strongest known Wi-Fi (lab, home, phone hotspot), falls back to its own AP, and is reachable at `olm-<id>.local`. **No BLE in v0.**
 - **Audio recording is undecided:** the KY-037 only gives a relative level, and the loose electret capsule needs a preamp plus a recorder. Options are in `hardware/README.md` §2. The phone microphone is ruled out because it breaks standardization.
 - **The privacy switch physically cuts the pendant's power**, and the hub logs the interval.

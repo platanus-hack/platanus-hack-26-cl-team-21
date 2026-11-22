@@ -105,8 +105,8 @@ describe("POST /api/v1/uploads/{id}/complete", () => {
     const excluded = [{ start: at(3000), end: at(5000) }];
     const frames = "seq,rtc_epoch_ms,uptime_ms,bytes\n" + [0, 500, 1000, 1500, 2000, 2500, 5000, 5500, 6000, 6500].map((ms, i) => `${i + 1},${t0 + ms},${ms},100`).join("\n") + "\n";
     const sensors =
-      "rtc_epoch,uptime_ms,temp_c,rh_pct,mq7,mq2,sound_p2p,batt_mv\n" +
-      Array.from({ length: 10 }, (_, i) => `${t0 / 1000 + i},${i * 1000},22.5,,300,400,500,${i === 0 ? -1 : 7400}`).join("\n") + "\n";
+      "rtc_epoch,uptime_ms,temp_c,rh_pct,co2_ppm,sound_active_pct,batt_mv\n" +
+      Array.from({ length: 10 }, (_, i) => `${t0 / 1000 + i},${i * 1000},22.5,,640,12,${i === 0 ? -1 : 7400}`).join("\n") + "\n";
     const events = `rtc_epoch,uptime_ms,type,value\n${t0 / 1000},1,BOOT,\n${t0 / 1000 + 7},7000,PRIVACY_ON,${t0 / 1000 + 7}\n${t0 / 1000 + 8},8000,PRIVACY_OFF,${t0 / 1000 + 8}\n`;
     const manifest = JSON.stringify({ manifest_version: "0", upload_id: id, excluded_intervals: excluded });
     const contents: Record<string, string> = { sensors, events, manifest, ...(withVideo ? { video, frames } : {}) };
@@ -239,7 +239,7 @@ describe("POST /api/v1/uploads/{id}/complete", () => {
 
     const [device] = await db.select({ id: devices.id }).from(devices).where(eq(devices.serial, serial));
     const sensors = await db.select().from(deviceSensors).where(eq(deviceSensors.deviceId, device.id));
-    assert.deepEqual(sensors.map((s) => s.sensorTypeKey).sort(), ["battery_mv", "co_raw", "flammable_gas_raw", "sound_level_raw", "temperature_c"]);
+    assert.deepEqual(sensors.map((s) => s.sensorTypeKey).sort(), ["battery_mv", "co2_ppm", "sound_active_pct", "temperature_c"]);
   });
 
   test("a retry of a failed upload replaces it: its rows and objects go, the new one lands", async () => {

@@ -16,7 +16,7 @@ After review, the phone uploads one bundle per device session (or per approved p
 |---|---|---|
 | `video` | `video.mp4` | H.264, encoded on the phone from the device JPEG frames. Variable frame rate: each frame keeps its real timestamp, so `pts = (rtc_epoch_ms − first_frame_epoch_ms) / 1000`. A keyframe at least every 2 s, plus one on the first frame after every gap, so the worker can cut clips without re-encoding (e.g. `MediaCodec` `KEY_I_FRAME_INTERVAL = 2`; ffmpeg `-force_key_frames "expr:gte(t,n_forced*2)"`). No audio track. |
 | `frames` | `frames.csv` | `seq,rtc_epoch_ms,uptime_ms,bytes` as written by the device, keeping only the rows of the frames that are in `video.mp4` (row *i* = video frame *i*). |
-| `sensors` | `sensors.csv` | As written by the device (`rtc_epoch,uptime_ms,temp_c,rh_pct,mq7,mq2,sound_p2p,batt_mv`), minus the rows inside excluded intervals. |
+| `sensors` | `sensors.csv` | As written by the device (`rtc_epoch,uptime_ms,temp_c,rh_pct,co2_ppm,sound_active_pct,batt_mv`, ADR 0003), minus the rows inside excluded intervals. |
 | `events` | `events.csv` | As written by the device (`rtc_epoch,uptime_ms,type,value`), minus the rows inside excluded intervals except `PRIVACY_ON`/`PRIVACY_OFF`. |
 | `manifest` | `manifest.json` | The device `session.json` verbatim, phone info, the excluded intervals and the sha256 of every other file. |
 
@@ -123,7 +123,7 @@ No new API in v0: the portal reads the DB server-side through the existing table
 | `files[kind=video]` | `media_assets` (`sha256`, `size_bytes`, `mime_type`, `storage_key`, `kind = 'video'`) | Row created on `complete`; `base_retain_until` = `uploaded_at` + `studies.media_retention_days`. Deleted when a failed upload is retried, unless observation evidence references it |
 | `manifest.phone.app_version` | `sync_batches.app_version` | |
 | participant (from token) | `sync_batches.participant_id`, `media_assets.participant_id`, `coverage_intervals.participant_id` | |
-| `sensors.csv` | `sensor_series` + `sensor_chunks` / `sensor_hourly` via `ingest_sensor_readings()` | `temp_c` → `temperature_c`, `rh_pct` → `humidity_pct`, `mq7` → `co_raw`, `mq2` → `flammable_gas_raw`, `sound_p2p` → `sound_level_raw`, `batt_mv` → `battery_mv`. Empty values (e.g. a failed DHT read) and `batt_mv` = -1 (external power) are skipped, not stored |
+| `sensors.csv` | `sensor_series` + `sensor_chunks` / `sensor_hourly` via `ingest_sensor_readings()` | `temp_c` → `temperature_c`, `rh_pct` → `humidity_pct`, `co2_ppm` → `co2_ppm`, `sound_active_pct` → `sound_active_pct`, `batt_mv` → `battery_mv` (ADR 0003; the Uno hub's `mq7`, `mq2` and `sound_p2p` columns are retired). Empty values (e.g. a failed DHT read) and `batt_mv` = -1 (external power) are skipped, not stored |
 | `events.csv` | `device_events` (`batch_id = upload_id`) | `id` = UUIDv5 of `(device_id, rtc_epoch, uptime_ms, type)` (`uptime_ms` may be empty). `occurred_at` = `value` for `PRIVACY_*` (real switch time), else `rtc_epoch` (seconds). `PRIVACY_ON/OFF` → `privacy_switch_on/off`, `BUTTON` → `button_press`, `LOW_BATT`/`CRIT_BATT` → `low_battery` (original type in `payload`), `DHT_FAIL` → `sensor_fault`, `BOOT` → `boot`, `RTC_SET` → `rtc_set` (old epoch in `payload`), `RTC_LOST` → `rtc_lost`, `CAM_BOOT` → `camera_boot` (`value` in `payload`) |
 | `excluded_intervals` | `coverage_intervals` (`excluded_by_participant`, source `app`) | |
 | `job_id` | `sync_batches.job_id` → `jobs.id` (`type = 'process_session'`, `payload = { "upload_id" }`) | `pipeline_runs.job_id` links the run back |
@@ -144,7 +144,7 @@ Migration `0003_enrollment_and_uploads` (MON-20) closes the schema gaps; the col
 - **Upload state:** `sync_batches.status`, `error_code`, `error_message`, `completed_at` and `job_id`, plus the `sync_batch_files` table for the declared files. Batches stored before the migration are marked `processed`.
 - **Device session:** `sync_batches.device_session_id`.
 - **Event kinds:** `boot`, `rtc_set`, `rtc_lost` and `camera_boot` on `device_events.kind`.
-- **Sensor types:** the migration inserts the pendant's `sensor_types` (`temperature_c`, `humidity_pct`, `co_raw`, `flammable_gas_raw`, `sound_level_raw`, `battery_mv`), so they exist without the demo seed.
+- **Sensor types:** migrations 0003 and 0004 insert the pendant's `sensor_types` (`temperature_c`, `humidity_pct`, `co2_ppm`, `sound_active_pct`, `battery_mv`, plus the Uno hub's `co_raw`, `flammable_gas_raw` and `sound_level_raw`), so they exist without the demo seed.
 
 Still open, as application logic rather than schema: ingestion needs a `device_sensors` row per pendant component and a `sensor_series` (period 1 s) per participant and sensor, created when a device is registered or assigned.
 

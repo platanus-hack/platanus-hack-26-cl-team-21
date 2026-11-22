@@ -290,5 +290,5 @@ INSERT INTO results (r) SELECT pg_temp.expect_error($q$INSERT INTO sync_batch_fi
 INSERT INTO results (r) SELECT pg_temp.expect_error($q$INSERT INTO sync_batch_files (batch_id, kind, sha256, size_bytes, content_type) VALUES ('00000000-0000-0000-0000-0000000000e9','frames','ABC',1,'text/csv')$q$, 'sync_batch_files_sha256_check', 'declared sha256 must be lowercase hex');
 INSERT INTO results (r) SELECT pg_temp.expect_error($q$INSERT INTO sync_batch_files (batch_id, kind, sha256, size_bytes, content_type) VALUES ('00000000-0000-0000-0000-0000000000e9','frames',repeat('02',32),0,'text/csv')$q$, 'sync_batch_files_size_check', 'declared size must be positive');
 INSERT INTO results (r) SELECT pg_temp.expect(
-  (SELECT count(*) = 6 FROM sensor_types WHERE key IN ('temperature_c','humidity_pct','co_raw','flammable_gas_raw','sound_level_raw','battery_mv')),
+  (SELECT count(*) = 8 FROM sensor_types WHERE key IN ('temperature_c','humidity_pct','co_raw','flammable_gas_raw','sound_level_raw','co2_ppm','sound_active_pct','battery_mv')),
   'the pendant sensor types exist without the seed');

@@ -11,7 +11,7 @@ class FirmwareJsonTest {
         val body = """{"device_id":"3c71bf","firmware_version":"cam-0.1.0","camera_ok":true,"sd_ok":true,""" +
             """"sd_free_mb":14820,"capturing":false,"session_id":null,"frames":0,"clock_ok":false,"epoch_ms":0,""" +
             """"battery_mv":-1,"ip":"192.168.4.1","pending_commands":1,"dropped_commands":0,"last_ack":"",""" +
-            """"last_sensor_line":"S,0,4000,,,212,305,512,","link_bad_checksums":2}"""
+            """"last_sensor_line":"S,,4000,,,,12,","link_bad_checksums":2}"""
 
         val status = parseStatus(body)
 
@@ -20,7 +20,7 @@ class FirmwareJsonTest {
         assertEquals(EXTERNAL_POWER_MV, status.batteryMv)
         assertEquals(14820L, status.sdFreeMb)
         assertEquals(false, status.clockOk)
-        assertEquals("S,0,4000,,,212,305,512,", status.lastSensorLine)
+        assertEquals("S,,4000,,,,12,", status.lastSensorLine)
         assertEquals(2, status.linkBadChecksums)
     }
 
