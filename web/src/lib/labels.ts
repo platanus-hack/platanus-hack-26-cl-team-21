@@ -179,6 +179,8 @@ export function formatAttributes(attributes: Record<string, unknown>): { key: st
 const SENSORS: Record<string, { label: string; unit: string; decimals: number }> = {
   temperature_c: { label: "Temperatura ambiente (DHT11)", unit: "°C", decimals: 1 },
   humidity_pct: { label: "Humedad relativa (DHT11)", unit: "%", decimals: 0 },
+  co2_ppm: { label: "CO₂ (MH-Z19C)", unit: "ppm", decimals: 0 },
+  sound_active_pct: { label: "Actividad sonora (KY-037)", unit: "% del tiempo sobre el umbral, no son dB", decimals: 0 },
   sound_level_raw: { label: "Nivel de sonido (KY-037)", unit: "valor crudo, no son dB", decimals: 0 },
   co_raw: { label: "CO (MQ-7)", unit: "valor crudo, sin calibrar", decimals: 0 },
   flammable_gas_raw: { label: "Gas inflamable / humo (MQ-2)", unit: "valor crudo, sin calibrar", decimals: 0 },

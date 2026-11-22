@@ -23,13 +23,12 @@ export const parseFrameTimes = (csv: string) => rows(csv).flatMap((f) => positiv
 export const SENSOR_COLUMNS = [
   { column: 2, key: "temperature_c", component: "DHT11" },
   { column: 3, key: "humidity_pct", component: "DHT11" },
-  { column: 4, key: "co_raw", component: "MQ-7" },
-  { column: 5, key: "flammable_gas_raw", component: "MQ-2" },
-  { column: 6, key: "sound_level_raw", component: "KY-037" },
-  { column: 7, key: "battery_mv", component: "battery divider" },
+  { column: 4, key: "co2_ppm", component: "MH-Z19C" },
+  { column: 5, key: "sound_active_pct", component: "KY-037" },
+  { column: 6, key: "battery_mv", component: "battery divider" },
 ] as const;
 
-/** `sensors.csv` (`rtc_epoch,uptime_ms,temp_c,rh_pct,mq7,mq2,sound_p2p,batt_mv`) by sensor type. Empty values and `batt_mv` = -1 (external power) are skipped. */
+/** `sensors.csv` (`rtc_epoch,uptime_ms,temp_c,rh_pct,co2_ppm,sound_active_pct,batt_mv`) by sensor type. Empty values and `batt_mv` = -1 (external power) are skipped. */
 export function parseSensorReadings(csv: string) {
   const bySensor = new Map<string, { at: Date; value: number }[]>();
   for (const fields of rows(csv)) {
