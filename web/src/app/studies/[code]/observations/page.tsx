@@ -226,7 +226,10 @@ function ObservationTable({ rows, basePath, showTimezone }: { rows: ObservationR
                 <time dateTime={row.local_date}>{formatLocalDay(row.local_date, "short", withYear)}</time>
               </td>
               <td className={`${TD} tabular-nums whitespace-nowrap`}>
-                {row.local_start}–{row.local_end}
+                {/* The evidence behind the observation: clip, source hash, offsets and review. */}
+                <Link href={`${basePath}/observations/${row.id}`} className={LINK} aria-label={`Ver evidencia de ${row.pseudonym}, ${row.local_start} a ${row.local_end}`}>
+                  {row.local_start}–{row.local_end}
+                </Link>
                 {row.local_end_date !== row.local_date && (
                   <span className="text-ink-muted"> ({formatLocalDay(row.local_end_date, "short", withYear)})</span>
                 )}
