@@ -68,6 +68,13 @@
     <string name="device_connected">Conectado · firmware %1$s</string>
     <string name="device_recording">Grabando</string>
     <string name="device_not_recording">Sin grabar</string>
+    <string name="recording_start">Iniciar grabación</string>
+    <string name="recording_stop">Detener grabación</string>
+    <string name="recording_frames">%1$s fotogramas</string>
+    <string name="recording_saved">Grabación guardada. Revísala en la pestaña Revisar.</string>
+    <string name="recording_unreachable">No pudimos comunicarnos con el colgante. Revisa que esté cerca y en la misma red.</string>
+    <string name="recording_unavailable">El colgante no puede grabar. Revisa la cámara y la tarjeta microSD.</string>
+    <string name="recording_failed">No se pudo completar. Inténtalo de nuevo.</string>
     <string name="device_status">Estado</string>
     <string name="device_battery">Batería</string>
     <string name="device_battery_estimate">Estimado: %1$d %% · %2$s V</string>

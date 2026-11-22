@@ -293,6 +293,7 @@ private fun App(prefs: SharedPreferences, createPendant: (String, String) -> Pen
                     pendant,
                     demoMode = demoMode,
                     onChangePendant = { editingPendant = true },
+                    protocolVersion = prefs.getString("protocol_version", "").orEmpty(),
                     studyCode = prefs.getString("enrollment_code", "").orEmpty(),
                     participantId = prefs.getString("participant_id", "").orEmpty(),
                     onLeaveStudy = {
