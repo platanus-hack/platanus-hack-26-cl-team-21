@@ -9,7 +9,7 @@ import {
   REVIEW_STATUS_LABELS,
   sensorInfo,
 } from "@/lib/labels";
-import { isHollowMarker } from "./day-timeline";
+import { isHollowMarker } from "@/components/day-timeline";
 
 function SensorContext({ stats }: { stats: SensorStat[] }) {
   const withReadings = stats.filter((s) => s.n > 0 && s.mean !== null);
@@ -17,13 +17,14 @@ function SensorContext({ stats }: { stats: SensorStat[] }) {
     return <p className="text-ink-muted">Sin lecturas de sensores en este intervalo.</p>;
   }
   return (
-    <table className="w-full text-left text-xs">
+    <table className="w-full text-left text-sm">
+      <caption className="sr-only">Lecturas de sensores durante el episodio</caption>
       <thead className="text-ink-muted">
         <tr>
-          <th className="py-0.5 pr-3 font-normal">Sensor</th>
-          <th className="py-0.5 pr-3 font-normal">Media</th>
-          <th className="py-0.5 pr-3 font-normal">Mín–máx</th>
-          <th className="py-0.5 font-normal">Lecturas</th>
+          <th scope="col" className="py-0.5 pr-3 font-normal">Sensor</th>
+          <th scope="col" className="py-0.5 pr-3 text-right font-normal">Media</th>
+          <th scope="col" className="py-0.5 pr-3 text-right font-normal">Mín–máx</th>
+          <th scope="col" className="py-0.5 text-right font-normal">Lecturas</th>
         </tr>
       </thead>
       <tbody className="tabular-nums">
@@ -35,11 +36,11 @@ function SensorContext({ stats }: { stats: SensorStat[] }) {
               <td className="py-0.5 pr-3">
                 {info.label} <span className="text-ink-muted">({info.unit})</span>
               </td>
-              <td className="py-0.5 pr-3">{fmt(s.mean)}</td>
-              <td className="py-0.5 pr-3">
+              <td className="py-0.5 pr-3 text-right">{fmt(s.mean)}</td>
+              <td className="py-0.5 pr-3 text-right whitespace-nowrap">
                 {fmt(s.min)}–{fmt(s.max)}
               </td>
-              <td className="py-0.5">{s.n}</td>
+              <td className="py-0.5 text-right">{s.n}</td>
             </tr>
           );
         })}
@@ -48,9 +49,23 @@ function SensorContext({ stats }: { stats: SensorStat[] }) {
   );
 }
 
-export function ObservationList({ observations, timeZone }: { observations: PlacedObservation[]; timeZone: string }) {
+export function ObservationList({
+  observations,
+  timeZone,
+  unobserved = false,
+}: {
+  observations: PlacedObservation[];
+  timeZone: string;
+  unobserved?: boolean;
+}) {
   if (observations.length === 0) {
-    return <p className="text-sm text-ink-muted">Sin observaciones vigentes este día.</p>;
+    return (
+      <p className="text-sm text-ink-muted">
+        {unobserved
+          ? "Sin tiempo observado este día: no se puede afirmar que no hubo episodios."
+          : "Sin observaciones vigentes este día."}
+      </p>
+    );
   }
   return (
     <ol className="space-y-3">
@@ -60,7 +75,7 @@ export function ObservationList({ observations, timeZone }: { observations: Plac
           <li
             key={o.id}
             id={`obs-${o.id}`}
-            className="scroll-mt-6 rounded-lg border border-rule p-4 text-sm target:ring-2 target:ring-secondary"
+            className="scroll-mt-6 rounded-lg border border-rule p-4 text-sm transition-[box-shadow,background-color] duration-150 ease-out target:bg-paper-deep target:ring-2 target:ring-secondary"
           >
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span
@@ -81,18 +96,18 @@ export function ObservationList({ observations, timeZone }: { observations: Plac
               {formatAttributes(o.attributes).map((item) => (
                 <div key={item.key} className="contents">
                   <dt className="text-ink-muted">{item.label}</dt>
-                  <dd>{item.value}</dd>
+                  <dd className="[overflow-wrap:anywhere]">{item.value}</dd>
                 </div>
               ))}
               <dt className="text-ink-muted">Confianza del modelo</dt>
               <dd>
                 <span className="tabular-nums">{formatConfidence(o.confidence)}</span>{" "}
-                <span className="text-xs text-ink-muted">(salida del modelo en escala 0–1, no es una probabilidad calibrada)</span>
+                <span className="text-ink-muted">(0 a 1, no calibrada)</span>
               </dd>
               <dt className="text-ink-muted">Evidencia</dt>
               <dd>{plural(o.evidenceCount, "clip de video original", "clips de video original")}</dd>
               <dt className="text-ink-muted">Procedencia</dt>
-              <dd className="text-xs text-ink-muted">
+              <dd className="text-ink-muted">
                 Protocolo {o.protocolVersion} · modelo {o.modelVersion} · pipeline {o.pipelineVersion}
               </dd>
             </dl>
@@ -106,7 +121,7 @@ export function ObservationList({ observations, timeZone }: { observations: Plac
             )}
 
             <div className="mt-3">
-              <h5 className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">Contexto de sensores durante el episodio</h5>
+              <h4 className="mb-1 text-xs font-semibold tracking-wide text-ink-muted uppercase">Contexto de sensores durante el episodio</h4>
               <SensorContext stats={o.sensorContext} />
             </div>
           </li>

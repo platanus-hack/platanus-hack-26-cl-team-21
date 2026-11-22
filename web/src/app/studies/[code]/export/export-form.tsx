@@ -1,20 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import { DATASET_CHOICES, type DatasetChoice, EXPORT_FIELDS, EXPORT_FORMATS } from "@/lib/export/params";
 import { DATASET_LABEL } from "./labels";
+import { ButtonLabel } from "@/components/button-label";
+import { Hash } from "@/components/hash";
+import { BUTTON_PRIMARY, FIELD, FIELD_LABEL } from "@/lib/ui";
 
 type Result = { kind: "idle" } | { kind: "working" } | { kind: "error"; message: string } | { kind: "done"; fileName: string; sha256: string };
 
 const FORMAT_LABEL = { csv: "CSV", json: "JSON" } as const;
 
-const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary";
-const inputClass = `min-h-10 rounded-lg border border-hairline bg-paper px-3 text-sm text-ink ${focusRing}`;
-const labelClass = "flex flex-col gap-1 text-xs font-medium text-ink-muted";
-const legendClass = "mb-1 text-xs font-medium text-ink-muted";
-const radioClass = `accent-primary ${focusRing}`;
-const hintClass = "text-xs text-ink-muted";
+const legendClass = "mb-1 text-sm font-medium text-ink-muted";
+const radioLabelClass = "flex min-h-10 items-center gap-2";
+const hintClass = "text-sm text-ink-muted";
 
 const FILE_NAME_PATTERN = /filename="([^"]+)"/;
 
@@ -24,9 +24,14 @@ export function ExportForm({ action, participants }: { action: string; participa
   const router = useRouter();
   const [dataset, setDataset] = useState<DatasetChoice>("both");
   const [result, setResult] = useState<Result>({ kind: "idle" });
+  const busy = result.kind === "working";
+  // State updates land on the next render; a ref blocks a second submit fired before that (double click).
+  const inFlight = useRef(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
     setResult({ kind: "working" });
     try {
       const response = await fetch(action, { method: "POST", body: new FormData(event.currentTarget) });
@@ -47,6 +52,8 @@ export function ExportForm({ action, participants }: { action: string; participa
       router.refresh(); // show the new row in the export history
     } catch {
       setResult({ kind: "error", message: "No se pudo contactar al servidor. Intenta de nuevo." });
+    } finally {
+      inFlight.current = false;
     }
   }
 
@@ -55,10 +62,10 @@ export function ExportForm({ action, participants }: { action: string; participa
       <div className="flex flex-wrap gap-8">
         <fieldset>
           <legend className={legendClass}>Formato</legend>
-          <div className="flex gap-4 text-sm">
+          <div className="flex flex-wrap gap-x-4 text-sm">
             {EXPORT_FORMATS.map((format) => (
-              <label key={format} className="flex items-center gap-1.5">
-                <input type="radio" name={EXPORT_FIELDS.format} value={format} defaultChecked={format === "csv"} className={radioClass} />
+              <label key={format} className={radioLabelClass}>
+                <input type="radio" name={EXPORT_FIELDS.format} value={format} defaultChecked={format === "csv"} className="accent-primary" />
                 {FORMAT_LABEL[format]}
               </label>
             ))}
@@ -66,16 +73,16 @@ export function ExportForm({ action, participants }: { action: string; participa
         </fieldset>
         <fieldset>
           <legend className={legendClass}>Datos</legend>
-          <div className="flex gap-4 text-sm">
+          <div className="flex flex-wrap gap-x-4 text-sm">
             {DATASET_CHOICES.map((choice) => (
-              <label key={choice} className="flex items-center gap-1.5">
+              <label key={choice} className={radioLabelClass}>
                 <input
                   type="radio"
                   name={EXPORT_FIELDS.dataset}
                   value={choice}
                   checked={dataset === choice}
                   onChange={() => setDataset(choice)}
-                  className={radioClass}
+                  className="accent-primary"
                 />
                 {DATASET_LABEL[choice]}
               </label>
@@ -85,9 +92,9 @@ export function ExportForm({ action, participants }: { action: string; participa
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <label className={labelClass}>
+        <label className={FIELD_LABEL}>
           Participante
-          <select name={EXPORT_FIELDS.participant} defaultValue="" autoComplete="off" className={inputClass}>
+          <select name={EXPORT_FIELDS.participant} defaultValue="" autoComplete="off" className={FIELD}>
             <option value="">Todos</option>
             {participants.map((pseudonym) => (
               <option key={pseudonym} value={pseudonym}>
@@ -96,13 +103,13 @@ export function ExportForm({ action, participants }: { action: string; participa
             ))}
           </select>
         </label>
-        <label className={labelClass}>
+        <label className={FIELD_LABEL}>
           Desde (día local)
-          <input type="date" name={EXPORT_FIELDS.from} autoComplete="off" className={inputClass} />
+          <input type="date" name={EXPORT_FIELDS.from} autoComplete="off" className={FIELD} />
         </label>
-        <label className={labelClass}>
+        <label className={FIELD_LABEL}>
           Hasta (día local)
-          <input type="date" name={EXPORT_FIELDS.to} autoComplete="off" className={inputClass} />
+          <input type="date" name={EXPORT_FIELDS.to} autoComplete="off" className={FIELD} />
         </label>
       </div>
       <p className={`-mt-2 ${hintClass}`}>
@@ -111,19 +118,16 @@ export function ExportForm({ action, participants }: { action: string; participa
       </p>
 
       {dataset === "observations" && (
-        <p className="rounded-r-lg border-l-4 border-warning bg-paper-deep px-3 py-2 text-sm text-ink">
+        <p className="rounded-r-lg border-l-4 border-warning bg-paper-deep px-3 py-2 text-sm text-ink transition-opacity duration-150 ease-out starting:opacity-0">
           Sin los intervalos de cobertura no se puede interpretar la ausencia de observaciones: en tiempo no observado no hay un cero.
           Exporta también la cobertura con los mismos filtros antes de analizar conteos o tasas.
         </p>
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="submit"
-          disabled={result.kind === "working"}
-          className={`min-h-10 rounded-lg bg-primary px-4 text-sm font-medium text-on-primary hover:bg-primary/90 disabled:opacity-50 ${focusRing}`}
-        >
-          {result.kind === "working" ? "Generando…" : "Generar y descargar"}
+        {/* aria-disabled instead of disabled: full contrast while busy, and focus stays on the button. */}
+        <button type="submit" aria-disabled={busy} className={`${BUTTON_PRIMARY} aria-disabled:cursor-progress`}>
+          <ButtonLabel idle="Generar y descargar" busy="Generando…" isBusy={busy} />
         </button>
         <p className={hintClass}>CSV con ambos conjuntos se descarga como un .zip con un archivo por conjunto.</p>
       </div>
@@ -131,16 +135,16 @@ export function ExportForm({ action, participants }: { action: string; participa
       <div aria-live="polite">
         {result.kind === "error" && <p className="text-sm text-error">{result.message}</p>}
         {result.kind === "done" && (
-          <p className="text-sm text-ink">
+          <div className="text-sm text-ink">
             Descargado{" "}
             <span className="font-mono" translate="no">{result.fileName}</span>
             {result.sha256 && (
               <>
                 {" "}
-                · sha256 <span className="font-mono break-all" translate="no">{result.sha256}</span>
+                · sha256 <Hash value={result.sha256} />
               </>
             )}
-          </p>
+          </div>
         )}
       </div>
     </form>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ParticipantTimeline } from "@/lib/queries/timeline";
 import { formatDate } from "@/lib/format";
 import { label, PARTICIPANT_STATUS_LABELS } from "@/lib/labels";
+import { LINK } from "@/lib/ui";
 
 function validity(fromMs: number, toMs: number | null, timeZone: string) {
   return toMs === null ? `desde ${formatDate(fromMs, timeZone)}` : `${formatDate(fromMs, timeZone)} – ${formatDate(toMs, timeZone)}`;
@@ -13,14 +14,23 @@ export function ParticipantHeader({ data }: { data: ParticipantTimeline }) {
   return (
     <header className="space-y-4">
       {/* The study layout already shows the study and its tabs; participant pages have no tab of their own. */}
-      <nav aria-label="Ruta" className="text-sm text-ink-muted">
-        <Link href={`/studies/${encodeURIComponent(study.code)}`} className="hover:underline">
-          Resumen
-        </Link>{" "}
-        <span aria-hidden>/</span> Participante
+      <nav aria-label="Ruta" className="text-sm">
+        <ol className="flex flex-wrap items-center gap-x-2">
+          <li>
+            <Link href={`/studies/${encodeURIComponent(study.code)}`} className={LINK}>
+              Resumen
+            </Link>
+          </li>
+          <li aria-hidden className="text-ink-muted">
+            /
+          </li>
+          <li aria-current="page" className="min-w-0 font-mono text-ink-muted [overflow-wrap:anywhere]">
+            {participant.pseudonym}
+          </li>
+        </ol>
       </nav>
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="font-mono text-3xl font-semibold" translate="no">
+        <h2 className="min-w-0 font-mono text-2xl font-semibold [overflow-wrap:anywhere]" translate="no">
           {participant.pseudonym}
         </h2>
         <span className="rounded-full bg-paper-deep px-2.5 py-0.5 text-sm text-ink-muted">
