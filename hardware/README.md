@@ -1,6 +1,8 @@
 # Hardware proposal: chest-worn prototype (v0)
 
-Owner: Alendi. Status: **proposal**. The firmware in `firmware/` compiles (Uno and ESP32-CAM) but **has not been tested on hardware yet**. Every pin and value below should be verified on the bench before soldering. Open questions are listed in §10.
+Owner: Alendi. Status: **proposal**. Every pin and value below should be verified on the bench before soldering. Open questions are listed in §10.
+
+> **Superseded sensor hub (ADR 0003).** The Arduino Uno can't be linked to the ESP32-CAM (no free pins once the camera and microSD are in use), so the sensor hub is now a second ESP32-CAM board without camera or microSD, sending its lines to the camera over Wi-Fi. MQ-7, MQ-2, RTC, buzzer and button are out; an MH-Z19C (CO2) is in. The Uno sections below are kept for reference; §4.5 and §7.4 describe the current hub.
 
 ## 1. Goals for the demo
 
@@ -154,6 +156,18 @@ The SD card runs in **1-bit mode**, which frees GPIO 4, 12 and 13.
 | 1 / 3 | USB serial (MB programmer) | logs only; don't wire to the Uno |
 | 0 | boot mode | the MB board handles it when flashing |
 
+### 4.5 ESP32 sensor hub pinout (ADR 0003)
+
+| Pin | Connects to | Notes |
+|---|---|---|
+| 5V / GND | buck 5 V and GND, MH-Z19C `Vin`/`GND` | The MH-Z19C needs 5 V; its UART is 3.3 V |
+| 3V3 | DHT11 `+`, KY-037 `+` | 3.3 V keeps their outputs safe for the ESP32 |
+| IO13 | MH-Z19C `TX` | `Serial2` RX, 9600 baud. `PWM` unconnected |
+| IO14 | MH-Z19C `RX` | `Serial2` TX |
+| IO15 | DHT11 `out` (V182 module) | |
+| IO4 | KY-037 `DO` | Shares the on-board flash LED, which lights with sound above the threshold. `AO` unconnected: IO2/4/12–15 are ADC2, unusable with Wi-Fi on |
+| IO2, IO12 | free | IO12 must stay low at boot; IO2 low for flashing |
+
 ### 4.4 The GPIO12 caveat
 
 GPIO12 selects the flash voltage at boot: if it is HIGH during reset, the ESP32 picks 1.8 V and won't boot. That's why:
@@ -225,6 +239,10 @@ Each line is `<payload>*<checksum>\n`, where the checksum is the XOR of all payl
 
 **Privacy switch behavior.** While privacy is on, the Uno stops transmitting and holds its TX line LOW, so it doesn't back-power the ESP32-CAM through its RX pin. The switch cuts the ESP32-CAM's power, so the camera is physically off and nothing is recorded. The Uno stores the `PRIVACY_ON` and `PRIVACY_OFF` times in EEPROM. When the camera boots again it **resumes the interrupted session** (see §7.2) and sends `C,HELLO`; the Uno replays the interval into that session's `events.csv`. The backend turns it into a `coverage_interval` with status `privacy_switch`. Known limit: if the RTC was never synced, the stored times are 0 and the interval can only be inferred from the frame gap.
 
+### 7.4 Wi-Fi hub link (ESP32 hub → ESP32-CAM, UDP port 4210)
+
+One datagram per second with the same checksummed line as §7.1, minus the epoch and with the new columns: `S,,<uptime_ms>,<temp_c>,<rh_pct>,<co2_ppm>,<sound_active_pct>,<batt_mv>*HH`. Empty fields are missing values: `temp_c`/`rh_pct` when the DHT11 read failed, `co2_ppm` during the MH-Z19C's 3 min warm-up, `batt_mv` (not measured yet). `sound_active_pct` is the share of the second the KY-037 comparator was high. The hub sends to the broadcast address on a shared network, or to the gateway when it joined the camera's `OLM-<id>` access point. The camera fills the epoch with its own clock (left empty until `/time`), so `sensors.csv` and `/status.last_sensor_line` carry `S,<epoch>,...`.
+
 ### 7.2 Files on the microSD
 
 ```text
@@ -232,7 +250,7 @@ Each line is `<payload>*<checksum>\n`, where the checksum is the XOR of all payl
   session.json                   device_id, firmware_version, protocol_version, fps, resolution, start/end
   frames/000001.jpg …            six-digit zero-padded, starts at 1, matches frames.csv seq
   frames.csv                     seq,rtc_epoch_ms,uptime_ms,bytes
-  sensors.csv                    rtc_epoch,uptime_ms,temp_c,rh_pct,mq7,mq2,sound_p2p,batt_mv
+  sensors.csv                    rtc_epoch,uptime_ms,temp_c,rh_pct,co2_ppm,sound_active_pct,batt_mv
   events.csv                     rtc_epoch,uptime_ms,type,value
 ```
 
@@ -243,7 +261,7 @@ Sensor lines and events are only written while a session is active; events outsi
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/status` | `device_id`, firmware, IP, capturing, session_id, frames, SD free, clock, battery mV (-1 = external power), last sensor line, pending/dropped commands, last ack, bad checksums |
-| POST | `/time?epoch=<s>` | sync the RTC (10-digit unix seconds). Returns 202 queued; confirmed by `last_ack` and the `RTC_SET` event |
+| POST | `/time?epoch=<s>` | set the camera clock (10-digit unix seconds), used to stamp frames and hub lines. Returns 202 `{"status":"set"}`; `clock_ok` turns true |
 | POST | `/capture/start?protocol=<v>` / `/capture/stop` | start or stop a session |
 | GET | `/sessions` | list session ids and which one is active |
 | GET | `/sessions/<id>/<file>` | download `session.json`, `frames.csv`, `sensors.csv`, `events.csv` |

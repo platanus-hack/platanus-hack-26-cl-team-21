@@ -53,7 +53,7 @@ TOKEN=$(curl -sf -X POST "$API/api/v1/enrollments" -H 'content-type: application
 T=$(date -u +%s); FROM=$(date -u -r $((T-3600)) +%Y-%m-%dT%H:%M:%SZ); TO=$(date -u -r $((T-3596)) +%Y-%m-%dT%H:%M:%SZ); E=$((T-3600))
 printf 'fake video bytes %s' "$RANDOM$RANDOM" > "$dir/video"
 printf 'seq,rtc_epoch_ms,uptime_ms,bytes\n1,%s000,0,10\n2,%s500,500,10\n3,%s000,1000,10\n' $E $E $((E+1)) > "$dir/frames"
-printf 'rtc_epoch,uptime_ms,temp_c,rh_pct,mq7,mq2,sound_p2p,batt_mv\n%s,0,22.5,50,300,400,500,7400\n' $E > "$dir/sensors"
+printf 'rtc_epoch,uptime_ms,temp_c,rh_pct,co2_ppm,sound_active_pct,batt_mv\n%s,0,22.5,50,640,12,7400\n' $E > "$dir/sensors"
 printf 'rtc_epoch,uptime_ms,type,value\n%s,0,BOOT,\n' $E > "$dir/events"
 ID=$(uuidgen | tr A-Z a-z)
 printf '{"manifest_version":"0","upload_id":"%s","excluded_intervals":[]}' "$ID" > "$dir/manifest"
