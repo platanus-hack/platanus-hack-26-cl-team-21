@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Newsreader } from "next/font/google";
 import Link from "next/link";
+import { MainNav } from "@/components/main-nav";
 import "./globals.css";
 
 // Self-hosted by next/font at build time: no request to Google at runtime.
@@ -11,8 +12,8 @@ const newsreader = Newsreader({
 });
 
 export const metadata: Metadata = {
-  title: "Observatorio Longitudinal Multimodal",
-  description: "Portal de investigadores",
+  title: { default: "Rigo Lab", template: "%s · Rigo Lab" },
+  description: "Portal de investigadores de Rigo: mediciones con su evidencia y su cobertura.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -24,13 +25,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <header className="border-b border-rule">
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-3">
             <Link href="/" className="font-serif text-lg font-medium text-primary">
-              Observatorio Longitudinal Multimodal
+              Rigo Lab
             </Link>
-            <nav aria-label="Principal" className="text-sm">
-              <Link href="/studies" className="inline-flex min-h-10 items-center text-ink-muted hover:text-ink">
-                Estudios
-              </Link>
-            </nav>
+            <MainNav />
           </div>
         </header>
         <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
