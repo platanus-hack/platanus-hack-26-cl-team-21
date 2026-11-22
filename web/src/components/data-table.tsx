@@ -12,10 +12,11 @@ export const NUM = "text-right tabular-nums";
 /** Body row: the opaque background lets the sticky row header cover what scrolls under it. */
 export const TR = "bg-paper";
 
-export function TableFrame({ caption, children }: { caption: string; children: ReactNode }) {
+/** `paged` tables are already short (the page does the limiting), so only wide content scrolls, sideways. */
+export function TableFrame({ caption, children, paged = false }: { caption: string; children: ReactNode; paged?: boolean }) {
   const id = useId();
   return (
-    <div role="region" aria-labelledby={id} tabIndex={0} className="max-h-[70vh] overflow-auto rounded-lg border border-rule">
+    <div role="region" aria-labelledby={id} tabIndex={0} className={`rounded-lg border border-rule ${paged ? "overflow-x-auto" : "max-h-[70vh] overflow-auto"}`}>
       <table className="w-full text-sm">
         <caption id={id} className="sr-only">
           {caption}
