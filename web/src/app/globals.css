@@ -16,7 +16,7 @@
   --color-hairline: rgb(26 26 26 / 0.6);
   --color-rule: rgb(26 26 26 / 0.15);
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-serif: var(--font-newsreader), ui-serif, Georgia, serif;
+  --font-serif: var(--font-playfair), ui-serif, Georgia, serif;
   /* State feedback only (GUIDELINES: ≤150 ms). A strong ease-out so short transitions still feel immediate. */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
@@ -41,4 +41,25 @@
   a {
     text-underline-offset: 0.2em;
   }
+}
+
+/* The home hero fills the viewport, so the header floats over it in light colors. */
+body > header[data-over-hero] {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  z-index: 20;
+  border-color: rgb(255 255 255 / 0.15);
+  color: #fff;
+}
+body > header[data-over-hero] :where(a, span, nav) {
+  color: rgb(255 255 255 / 0.85);
+}
+body > header[data-over-hero] a:hover {
+  color: #fff;
+}
+/* The secondary-blue ring is ~2.4:1 on the dark hero; white keeps focus visible (WCAG 1.4.11). */
+body > header[data-over-hero] :focus-visible,
+[data-hero] :focus-visible {
+  outline-color: #fff;
 }

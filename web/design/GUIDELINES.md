@@ -1,8 +1,8 @@
 # Researcher portal — design guidelines
 
-Same brand as the Android app ([`android/design/GUIDELINES.md`](../../android/design/GUIDELINES.md)), adapted to a desktop tool for researchers who read dense data for long stretches.
+Same brand as the observatory system ([`AGENTS.md`](../../AGENTS.md)), adapted to a desktop tool for researchers who read dense data for long stretches.
 
-Keywords: **clean line, anatomía de un sistema, edición científica, contraste, minimal.** Reference mood: editorial/technical print. A warm paper background, black hairlines, a serif display face and one flat highlight color. Think of a lab notebook or a journal's data supplement, not a SaaS dashboard.
+Keywords: **clean line, anatomía de un sistema, edición científica, contraste, minimal.** Reference mood: editorial/technical print. A warm paper background, black hairlines, the high-contrast serif typeface **Playfair Display**, and one flat highlight color. Think of a laboratory notebook or a prestigious scientific journal's data supplement, not a generic SaaS dashboard.
 
 ## Priorities (in order)
 
@@ -27,18 +27,45 @@ WCAG 2.2 AA. These rules are not optional.
 
 Spanish only. Code stays in English. Labels for enums live in `src/lib/labels.ts`.
 
+## Brand identity & logo assets
+
+Assets live in `web/public/` and are also available as lightweight inline components in `src/components/brand.tsx`.
+
+### 1. Full logo (`logo.svg`, `logo-white.svg`)
+- **Composition:** 2×2 Isotype on the left, primary wordmark **RIGO** in Playfair Display (uppercase, `#192859` Navy), and secondary tagline **for science** in Playfair Display (lowercase, `#28469e` Blue).
+- **Usage:** Main landing pages, reports, official research export covers, documentation headers.
+- **Clear space:** At least the height of the "O" in RIGO around all sides of the logo.
+- **Minimum height:** 32 px on screens; 12 mm in printed data supplements.
+
+### 2. Standalone isotype (`isotype.svg`, `isotype-white.svg`, `isotype-navy.svg`)
+- **Composition:** 4 organic, cellular nodes configured in a 2×2 square matrix. Each cell evokes biological specimens, sensor nodes, and the multi-dimensional observatory channels (video, audio level, environment gases, participant consent).
+- **Color:** Brand Amber `#f6a321` (warm, scientific instrument accent).
+- **Usage:** Favicon, app icon, compact avatar badges, technical stamps, and hero labels.
+- **Minimum size:** 20 × 20 px.
+
+### 3. Horizontal glyph mark (`mark-horizontal.svg`, `mark-horizontal-white.svg`)
+- **Composition:** The 4 organic glyphs laid out horizontally in a single row (R-I-G-O).
+- **Color:** Brand Amber `#f6a321` or Navy `#192859`.
+- **Usage:** Header menu brand bar (`RigoHorizontalMark` beside "Lab"), wide decorative bands, banner stamps, and device enclosure engravings.
+- **Minimum height:** 24 px.
+
+### 4. Background and color rules
+- **Light / paper background (standard):** Full brand colors (Amber `#f6a321` isotype + Navy `#192859` wordmark + Blue `#28469e` tagline).
+- **Dark / navy background (`#192859`):** Monochrome white (`logo-white.svg`, `isotype-white.svg`).
+- **Don'ts:** Never alter the proportions, apply gradients, add drop shadows, or recolor individual letter glyphs.
+
 ## Color
 
 Values live in `src/app/globals.css` as CSS variables exposed to Tailwind through `@theme`, so components use `bg-paper`, `text-ink`, `border-hairline` and never raw hex or the stock `zinc`/`neutral` grays.
 
 | Token | Hex | Use |
 |---|---|---|
-| `primary` | `#192859` navy | Main buttons, page titles, key text. 11.6:1 on paper |
+| `primary` | `#192859` navy | Logo wordmark, main buttons, page titles, key text. 11.6:1 on paper |
 | `on-primary` | `#FFFFFF` | Text on navy |
-| `secondary` | `#28469e` blue | Links, selected states, active tabs, focus ring. 7.0:1 on paper |
+| `secondary` | `#28469e` blue | Logo tagline, links, selected states, active tabs, focus ring. 7.0:1 on paper |
 | `highlight` | `#f27533` orange | **The highlight.** The one key word in a headline (like a marker highlight), the main call to action of a page. Fill only, ink text on top (6.1:1) |
-| `warning` | `#f6a321` amber | Caveats that change how data should be read: partial coverage, an episode outside observed time, stale data. Not routine states: "Pendiente" review is on almost every row, so it stays neutral (`paper-deep`). Fill only, ink text on top (8.4:1) |
-| `paper` | `#F2E7E1` | Page background |
+| `warning` | `#f6a321` amber | **Brand isotype color.** Caveats that change how data should be read: partial coverage, an episode outside observed time, stale data. Fill only, ink text on top (8.4:1) |
+| `paper` | `#F2E7E1` | Page background (warm archival paper feel) |
 | `paper-deep` | `#E3D7CD` | Cards, grouped sections, table header rows |
 | `ink` | `#1A1A1A` | Body text. 14.3:1 |
 | `ink-muted` | `#45423C` | Secondary text, captions, metadata. 8.2:1 on paper, 7.1:1 on `paper-deep` |
@@ -58,12 +85,40 @@ Charts and the coverage timeline use their own palette, defined once in `src/lib
 - Hues are grouped by who caused the gap (participant, device, data/processing), at most three, distinguished within a group by hatch angle.
 - Data hues are never reused for UI chrome, and brand colors are never used to encode data. The one-accent rule does not apply inside a chart.
 
-## Type
+## Type & typography system
 
-- **Display/headline/title:** *Newsreader*, the same serif as the app. Self-hosted through `next/font` (no runtime request to Google), one variable font, used for `h1`–`h3` and large numbers in summary cards.
-- **Body/label/UI:** the system font stack (`ui-sans-serif, system-ui, …`). It's native and costs nothing. Geist is dropped.
-- **Numbers** (sensor values, timestamps, durations, counts): `tabular-nums`, right-aligned in tables, so columns line up and values don't jump.
-- **Code-like values** (hashes, IDs, versions): `font-mono`, truncated in the middle with the full value in a `title` and copyable.
+The typographic system pairs the high-contrast editorial serif of the brand with high-performance native system sans-serif and tabular numerical data.
+
+### Typefaces
+
+1. **Brand & Display Serif: *Playfair Display***
+   - Designed by Claus Eggers Sørensen (SIL Open Font License).
+   - Influenced by late 18th-century European printing (Baskerville, Scotch Roman), featuring delicate hairlines and bold downstrokes.
+   - Self-hosted at build time via `next/font/google` (`Playfair_Display`) with zero runtime third-party requests or privacy leaks.
+   - Assigned to `--font-serif` via CSS variable `--font-playfair`.
+2. **Body & Interface: System Sans Stack**
+   - `ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`.
+   - Native, zero network cost, highly legible for dense scientific data.
+3. **Tabular Numerics & Code: Tabular Numbers / Monospace**
+   - Sensor values, timestamps, durations: `tabular-nums` so columns align and data does not jump.
+   - Checksums, hashes, device IDs, schema versions: `font-mono`.
+
+### Typography usage matrix
+
+| Role | Face | Tailwind classes | Use case |
+|---|---|---|---|
+| **Logo wordmark** | Playfair Display | — (drawn in vector) | Brand logotype |
+| **Page title (H1)** | Playfair Display | `font-serif text-3xl sm:text-5xl font-medium text-primary` | Main page headline, portal hero |
+| **Section title (H2)** | Playfair Display | `font-serif text-2xl font-medium text-ink` | Grouped block titles ("Anatomía de un día") |
+| **Sub-section (H3)** | Playfair Display | `font-serif text-xl font-medium text-ink` | Card headers, modal titles |
+| **Specimen primary value** | Playfair Display | `font-serif text-3xl text-ink tabular-nums` | Large key metrics in specimen cards (e.g. `4h 12m`, `3`) |
+| **Editorial tagline** | Playfair Display Italic | `font-serif italic text-secondary` | Secondary brand motto ("for science") |
+| **Body copy** | System Sans | `font-sans text-base text-ink` | Explanatory paragraphs, documentation |
+| **Small copy & captions** | System Sans | `font-sans text-sm text-ink-muted` | Secondary instructions, field descriptions |
+| **Specimen labels & tags** | System Sans | `text-xs font-semibold uppercase tracking-wider text-ink-muted` | Labeled specimen headers ("TIEMPO OBSERVADO") |
+| **Buttons & navigation** | System Sans | `font-sans text-sm font-medium` | Navigation links, action buttons |
+| **Sensor data in tables** | System Sans / Mono | `tabular-nums text-right font-normal` | Numeric readings (temperature, sound, humidity) |
+| **Hashes, IDs & versions** | Monospace | `font-mono text-xs` | Session hashes, SHA-256, protocol IDs |
 
 ## Layout
 
@@ -83,7 +138,7 @@ Use these sparingly, on at most one element per page, for example the study over
 
 - Thin crosshair `+` marks and corner ticks around a framed block, drawn with CSS borders or a small inline SVG.
 - A faint grid-paper background, only behind a device or protocol diagram.
-- Key figures laid out like a labeled specimen: small uppercase label, large tabular value in the serif, unit.
+- Key figures laid out like a labeled specimen: small uppercase label, large tabular value in Playfair Display serif, unit.
 
 ## Don't
 
