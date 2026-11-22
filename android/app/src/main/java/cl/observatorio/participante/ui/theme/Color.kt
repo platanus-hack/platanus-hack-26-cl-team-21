@@ -11,6 +11,8 @@ val Orange = Color(0xFFF27533)
 val Amber = Color(0xFFF6A321) // warnings; fill only, always with Ink text on top
 val Paper = Color(0xFFF2E7E1)
 val Ink = Color(0xFF1A1A1A)
+val Success = Color(0xFF2E7D32) // "all sent" check, light theme
+val SuccessDark = Color(0xFF8BC48F) // same, dark theme
 
 val LightColors = lightColorScheme(
     primary = Navy,

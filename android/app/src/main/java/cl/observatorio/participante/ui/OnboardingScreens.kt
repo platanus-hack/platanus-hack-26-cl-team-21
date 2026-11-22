@@ -59,6 +59,7 @@ import androidx.compose.ui.text.font.FontWeight
 import cl.observatorio.participante.BuildConfig
 import cl.observatorio.participante.ui.theme.TabularNumbers
 import cl.observatorio.participante.R
+import cl.observatorio.participante.api.EnrollmentException
 import cl.observatorio.participante.ui.theme.ObservatorioTheme
 import cl.observatorio.participante.pendant.PendantApi
 import cl.observatorio.participante.pendant.PendantRequestException
@@ -126,40 +127,70 @@ fun WelcomeScreen(onStart: () -> Unit) {
 }
 
 @Composable
-fun JoinStudyScreen(onBack: () -> Unit, onJoin: (studyCode: String, participantId: String) -> Unit) {
-    var study by rememberSaveable { mutableStateOf("") }
-    var participant by rememberSaveable { mutableStateOf("") }
-    val canJoin = study.isNotBlank() && participant.isNotBlank()
-    val studyFocus = remember { FocusRequester() }
-    // Only on first arrival: coming back with codes already typed shouldn't pop the keyboard.
-    LaunchedEffect(Unit) { if (study.isEmpty()) studyFocus.requestFocus() }
+fun JoinStudyScreen(initialCode: String, onBack: () -> Unit, enroll: suspend (code: String) -> Unit) {
+    var code by rememberSaveable { mutableStateOf(initialCode) }
+    var connecting by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<Int?>(null) }
+    val scope = rememberCoroutineScope()
+    val canJoin = code.isNotBlank() && !connecting
+    val codeFocus = remember { FocusRequester() }
+    // Only on first arrival: coming back with a code already typed shouldn't pop the keyboard.
+    LaunchedEffect(Unit) { if (code.isEmpty()) codeFocus.requestFocus() }
+    val join = {
+        connecting = true
+        error = null
+        scope.launch {
+            try {
+                enroll(code.trim())
+            } catch (e: EnrollmentException) {
+                error = when (e.httpStatus) {
+                    404 -> R.string.join_code_unknown
+                    409 -> R.string.join_code_used
+                    else -> R.string.join_failed
+                }
+            } catch (e: IOException) {
+                error = R.string.join_offline
+            } catch (e: JSONException) {
+                error = R.string.join_failed
+            } finally {
+                connecting = false
+            }
+        }
+        Unit
+    }
     StepScaffold(
         title = stringResource(R.string.join_title),
         onBack = onBack,
         action = {
-            MainActionButton(stringResource(R.string.next), onClick = { onJoin(study.trim(), participant.trim()) }, enabled = canJoin)
+            MainActionButton(
+                stringResource(if (connecting) R.string.join_connecting else R.string.next),
+                onClick = join,
+                enabled = canJoin,
+            )
         },
     ) {
         Text(stringResource(R.string.join_body), style = MaterialTheme.typography.bodyLarge)
         OutlinedTextField(
-            value = study,
-            onValueChange = { study = it },
-            label = { Text(stringResource(R.string.join_study_code)) },
-            placeholder = { Text("EAT-001") },
+            value = code,
+            onValueChange = { code = it; error = null },
+            label = { Text(stringResource(R.string.join_code)) },
+            placeholder = { Text("EAT-001-P01") },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Next),
-            modifier = Modifier.fillMaxWidth().focusRequester(studyFocus),
+            enabled = !connecting,
+            isError = error != null,
+            supportingText = error?.let { { Text(stringResource(it)) } },
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { if (canJoin) join() }),
+            modifier = Modifier.fillMaxWidth().focusRequester(codeFocus),
         )
-        OutlinedTextField(
-            value = participant,
-            onValueChange = { participant = it },
-            label = { Text(stringResource(R.string.join_participant_id)) },
-            placeholder = { Text("p-019") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { if (canJoin) onJoin(study.trim(), participant.trim()) }),
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (connecting) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text(
+                stringResource(R.string.join_slow_note),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Text(
             stringResource(R.string.join_pseudonym_note),
             style = MaterialTheme.typography.bodyMedium,
@@ -169,7 +200,7 @@ fun JoinStudyScreen(onBack: () -> Unit, onJoin: (studyCode: String, participantI
 }
 
 @Composable
-fun ConsentScreen(onBack: () -> Unit, onAccept: () -> Unit) {
+fun ConsentScreen(protocolVersion: String, onBack: () -> Unit, onAccept: () -> Unit) {
     var accepted by rememberSaveable { mutableStateOf(false) }
     StepScaffold(
         title = stringResource(R.string.consent_title),
@@ -193,7 +224,7 @@ fun ConsentScreen(onBack: () -> Unit, onAccept: () -> Unit) {
     ) {
         Text(stringResource(R.string.consent_study), style = MaterialTheme.typography.titleLarge)
         Text(
-            stringResource(R.string.consent_protocol),
+            stringResource(R.string.consent_protocol, protocolVersion),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -345,4 +376,4 @@ private fun WelcomePreview() = ObservatorioTheme { WelcomeScreen(onStart = {}) }
 
 @Preview(showBackground = true, heightDp = 900)
 @Composable
-private fun ConsentPreview() = ObservatorioTheme { ConsentScreen(onBack = {}, onAccept = {}) }
+private fun ConsentPreview() = ObservatorioTheme { ConsentScreen("eating-v1", onBack = {}, onAccept = {}) }

@@ -251,6 +251,7 @@ export function createMockApi({ dataDir, processingDelayMs = 3000, urlTtlSeconds
   async function route(request, response) {
     const url = new URL(request.url, "http://mock");
     const uploadMatch = /^\/api\/v1\/uploads\/([^/]+)(\/complete)?$/.exec(url.pathname);
+    if (request.method === "GET" && url.pathname === "/api/health") return sendJson(response, 200, { ok: true });
     if (request.method === "POST" && url.pathname === "/api/v1/enrollments") return enroll(request, response);
     if (request.method === "POST" && url.pathname === "/api/v1/uploads") return createUpload(request, response);
     if (request.method === "POST" && uploadMatch?.[2]) return completeUpload(request, response, uploadMatch[1]);

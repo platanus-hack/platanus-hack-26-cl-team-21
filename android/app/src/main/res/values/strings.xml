@@ -15,15 +15,20 @@
 
     <!-- Onboarding: join study -->
     <string name="join_title">Unirse a un estudio</string>
-    <string name="join_body">Ingresa los códigos que te entregó el equipo de investigación.</string>
-    <string name="join_study_code">Código del estudio</string>
-    <string name="join_participant_id">Código de participante</string>
+    <string name="join_body">Ingresa el código que te entregó el equipo de investigación.</string>
+    <string name="join_code">Código de participación</string>
+    <string name="join_connecting">Conectando…</string>
+    <string name="join_slow_note">La primera conexión puede tardar hasta un minuto.</string>
+    <string name="join_code_unknown">No encontramos ese código. Revisa que esté bien escrito.</string>
+    <string name="join_code_used">Este código ya se usó. Pide uno nuevo al equipo de investigación.</string>
+    <string name="join_offline">No hay conexión con el servidor. Revisa tu internet e inténtalo de nuevo.</string>
+    <string name="join_failed">No pudimos completar la inscripción. Inténtalo de nuevo.</string>
     <string name="join_pseudonym_note">Tu código es un seudónimo: el estudio no guarda tu nombre junto a tus datos.</string>
 
     <!-- Onboarding: consent -->
     <string name="consent_title">Consentimiento</string>
     <string name="consent_study">Episodios de alimentación</string>
-    <string name="consent_protocol">Protocolo eating-v1 · cuándo comes o bebes, cuánto dura y en qué contexto visible.</string>
+    <string name="consent_protocol">Protocolo %1$s · cuándo comes o bebes, cuánto dura y en qué contexto visible.</string>
     <string name="consent_records">Qué se registra</string>
     <string name="consent_records_video">Video del colgante en los horarios del protocolo</string>
     <string name="consent_records_sensors">Temperatura, humedad, sonido y gases (lecturas relativas)</string>
@@ -118,6 +123,18 @@
     <string name="status_pending">Pendiente</string>
     <string name="status_approved">Aprobado</string>
     <string name="status_excluded">Excluido</string>
+    <string name="sent_title">Todo enviado</string>
+    <plurals name="sent_body">
+        <item quantity="one">Enviaste %d clip. Lo que excluiste no salió de tu teléfono.</item>
+        <item quantity="other">Enviaste %d clips. Lo que excluiste no salió de tu teléfono.</item>
+    </plurals>
+    <string name="send_action">Enviar lo aprobado</string>
+    <string name="send_sending_title">Enviando</string>
+    <string name="send_sending_progress">Clip %1$d de %2$d</string>
+    <string name="send_sending_body">Mantén la app abierta hasta que termine. Lo que excluiste no sale de tu teléfono.</string>
+    <string name="send_offline">No hay conexión con el servidor. No se perdió nada: inténtalo de nuevo.</string>
+    <string name="send_conflict">Ya hay un envío de esta sesión en curso o con otra revisión. Inténtalo más tarde.</string>
+    <string name="send_failed">No pudimos enviar. Inténtalo de nuevo.</string>
 
     <!-- Clip detail -->
     <string name="clip_preview_unavailable">Vista previa no disponible\n(colgante simulado)</string>

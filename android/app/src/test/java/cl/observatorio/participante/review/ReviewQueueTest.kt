@@ -44,6 +44,24 @@ class ReviewQueueTest {
         "seq,rtc_epoch_ms,uptime_ms,bytes\n" + epochsMs.mapIndexed { i, ms -> "${i + 1},$ms,${4000 + i * 500},24000\n" }.joinToString("")
 
     @Test
+    fun `does not load sessions that were already sent`() = runBlocking {
+        val pendant = FakeSessionsPendant(
+            listOf(SessionEntry("s-1", active = false), SessionEntry("s-2", active = false)),
+            listOf("s-1", "s-2").flatMap { id ->
+                listOf(
+                    (id to SessionFile.SESSION_JSON) to sessionJson(id, 1_795_281_600_000),
+                    (id to SessionFile.FRAMES_CSV) to framesCsv(1_795_281_600_000, 1_795_281_960_000),
+                )
+            }.toMap(),
+        )
+        val queue = ReviewQueue(wasSent = { it == "s-1" })
+
+        queue.refresh(pendant)
+
+        assertEquals(listOf("s-2"), queue.clips.map { it.id })
+    }
+
+    @Test
     fun `loads finished sessions with start and duration from frames csv`() = runBlocking {
         val pendant = FakeSessionsPendant(
             listOf(SessionEntry("s-1", active = false), SessionEntry("s-2", active = true)),
