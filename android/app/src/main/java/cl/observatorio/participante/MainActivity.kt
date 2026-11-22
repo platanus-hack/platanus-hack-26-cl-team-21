@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import cl.observatorio.participante.pendant.HttpPendant
+import cl.observatorio.participante.api.enroll
 import cl.observatorio.participante.pendant.MockPendant
 import cl.observatorio.participante.pendant.PendantApi
 import cl.observatorio.participante.pendant.parsePendantAddress
@@ -49,6 +50,8 @@ import cl.observatorio.participante.ui.ReviewScreen
 import cl.observatorio.participante.ui.WelcomeScreen
 import cl.observatorio.participante.ui.theme.ObservatorioTheme
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.Proxy
 
@@ -90,7 +93,8 @@ private fun App(prefs: SharedPreferences, createPendant: (String, String) -> Pen
     val realQueue = remember(pendantAddress, pendantToken) { ReviewQueue() }
     val reviewQueue = if (demoMode) demoQueue else realQueue
     var onboarded by rememberSaveable { mutableStateOf(prefs.getBoolean("onboarded", false)) }
-    var step by rememberSaveable { mutableIntStateOf(0) }
+    // Enrolled but not paired yet (e.g. the app was restarted): resume at consent instead of asking for the code again.
+    var step by rememberSaveable { mutableIntStateOf(if (prefs.contains("participant_token")) 2 else 0) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var openClipId by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
@@ -136,11 +140,34 @@ private fun App(prefs: SharedPreferences, createPendant: (String, String) -> Pen
         BackHandler(enabled = step > 0) { step-- }
         when (step) {
             0 -> WelcomeScreen(onStart = { step = 1 })
-            1 -> JoinStudyScreen(onBack = { step = 0 }) { study, participant ->
-                prefs.edit().putString("study_code", study).putString("participant_id", participant).apply()
+            1 -> JoinStudyScreen(
+                initialCode = prefs.getString("enrollment_code", "").orEmpty(),
+                onBack = { step = 0 },
+            ) { code ->
+                // Codes are single-use: coming back from consent with the same code reuses the enrollment.
+                if (code != prefs.getString("enrollment_code", null) || !prefs.contains("participant_token")) {
+                    // The code is single-use: once the server accepts it the token must be saved even if this screen
+                    // leaves meanwhile (back, rotation), or the participant could never enroll again.
+                    withContext(NonCancellable) {
+                        val enrollment = enroll(code)
+                        // shortcut: the participant token is stored in plain text; move it to Keystore-backed storage
+                        // before real participants.
+                        prefs.edit()
+                            .putString("enrollment_code", code)
+                            .putString("participant_id", enrollment.participantId)
+                            .putString("study_id", enrollment.studyId)
+                            .putString("protocol_version", enrollment.protocolVersion)
+                            .putString("participant_token", enrollment.participantToken)
+                            .apply()
+                    }
+                }
                 step = 2
             }
-            2 -> ConsentScreen(onBack = { step = 1 }, onAccept = { step = 3 })
+            2 -> ConsentScreen(
+                protocolVersion = prefs.getString("protocol_version", "").orEmpty(),
+                onBack = { step = 1 },
+                onAccept = { step = 3 },
+            )
         }
         return
     }
@@ -199,7 +226,7 @@ private fun App(prefs: SharedPreferences, createPendant: (String, String) -> Pen
                     pendant,
                     demoMode = demoMode,
                     onChangePendant = { editingPendant = true },
-                    studyCode = prefs.getString("study_code", "").orEmpty(),
+                    studyCode = prefs.getString("enrollment_code", "").orEmpty(),
                     participantId = prefs.getString("participant_id", "").orEmpty(),
                     onLeaveStudy = {
                         // shortcut: only forgets the study on this phone. Telling the backend and handling
