@@ -57,7 +57,7 @@ Render only deploys from repos you own: set up the personal mirror described in 
 
 ## Session pipeline (`process_session`)
 
-The worker turns an uploaded session video into observations (`worker/src/process-session/`). Until object storage is wired, it reads `<LOCAL_MEDIA_DIR>/<upload_id>/video.mp4` and `frames.csv`; the declared video and frame timeline hashes must match the bundle.
+The worker turns an uploaded session video into observations (`worker/src/process-session/`). It downloads `video.mp4` and `frames.csv` from object storage (the `S3_*` vars), or reads `<LOCAL_MEDIA_DIR>/<upload_id>/video.mp4` and `frames.csv` when `LOCAL_MEDIA_DIR` is set; the declared video and frame timeline hashes must match the bundle.
 
 ```bash
 npm test -w worker            # unit + DB tests, Claude mocked (DB tests need a migrated, seeded DATABASE_URL)

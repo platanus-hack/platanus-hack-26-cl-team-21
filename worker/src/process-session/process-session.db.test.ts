@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import type * as Db from "@observatorio/db";
-import { LocalDirSource, sha256File } from "./source";
+import { LocalDirSource, sha256File, StorageSource } from "./source";
 import { FakeModel, FIRST_FRAME_MS, makeSession } from "./test-helpers";
 
 // Needs a migrated and seeded database (npm run db:migrate && npm run db:seed); skipped without one.
@@ -67,6 +68,15 @@ describe("process_session against the seeded database (Claude mocked)", { skip: 
   after(async () => {
     await rm(root, { recursive: true, force: true });
     await db?.db.$client.end();
+  });
+
+  it("processes an upload fetched from object storage", async () => {
+    const { uploadId } = await upload();
+    const dir = path.join(root, uploadId);
+    // Serves the session's files by object key, the way the bucket does.
+    const storage = { getStream: async (key: string) => createReadStream(path.join(dir, path.basename(key))) } as unknown as ConstructorParameters<typeof StorageSource>[0];
+    const result = await processSession({ id: jobId, payload: { upload_id: uploadId } }, { model: new FakeModel({ from: 15, to: 18 }), source: new StorageSource(storage) });
+    assert.ok(result);
   });
 
   it("writes a run with provenance, observations and evidence, and supersedes them on a re-run", async () => {
