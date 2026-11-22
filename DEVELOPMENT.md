@@ -20,7 +20,7 @@ brew install postgresql@17 && brew services start postgresql@17
 
 Prefer Docker? `docker compose up -d postgres` and use the alternative URL in `.env.example`.
 
-Object storage runs in Docker either way: `docker compose up -d minio minio-init` starts MinIO on `localhost:9000` (console on `:9001`, `minioadmin`/`minioadmin`) and creates the `olm-media` bucket. The defaults in `.env.example` point at it. `npm run storage:test:integration` checks the round trip (presigned PUT, HEAD, GET, delete) against whatever `S3_*` points to.
+Object storage runs in Docker either way: `docker compose up -d minio minio-init` starts MinIO on `localhost:9000` (console on `:9001`, `minioadmin`/`minioadmin`) and creates the `olm-media` bucket. The defaults in `.env.example` point at it. Presigned URLs are signed against the host in `S3_ENDPOINT`, which an Android emulator can't reach as `localhost`. Either run `adb reverse tcp:9000 tcp:9000` (the emulator's `localhost:9000` then reaches MinIO; nothing else to configure), or start the web app with `S3_PUBLIC_ENDPOINT=http://10.0.2.2:9000 npm run dev:web` (use `http://<your-LAN-IP>:9000` for a physical phone). Don't put `S3_PUBLIC_ENDPOINT` in `.env`: `npm run test -w web` PUTs to those URLs from the host. The upload API rejects a `device_id` that isn't in `devices`, so register the pendant first (the demo mode's fake pendant is `3c71bf`: `insert into devices (serial, hardware_revision, form_factor) values ('3c71bf','demo','pendant')`). `npm run storage:test:integration` checks the round trip (presigned PUT, HEAD, GET, delete) against whatever `S3_*` points to.
 
 ```bash
 cp .env.example .env
@@ -35,6 +35,43 @@ curl -X POST localhost:3000/api/jobs   # the worker prints "hello from worker"
 Changing the schema: edit the module for that area in `db/src/schema/`, then `npm run db:generate` and commit the migration in `db/migrations/`. Rules Drizzle can't express (no-overlap constraints, triggers, SQL functions) go in a custom migration; see [`db/README.md`](db/README.md). `npm run db:test` checks those rules against your database (rolled back).
 
 `npm run test -w web` runs the API route tests (`web/src/**/*.test.ts`, `node:test` through `tsx`) against the database in `DATABASE_URL`. They insert their own study and participants with random codes and leave them there, so point it at a local or CI database, never production.
+
+### Upload walkthrough with curl
+
+With the web app, Postgres and MinIO running (see above) and the demo seed loaded, this enrolls a participant, uploads a tiny session and completes it (macOS: `date -r`; needs `jq`). Each run uses up one enrollment code (`CODE=EAT-001-P03 bash walkthrough.sh`); it ends with the upload in `processing` until the worker picks it up.
+
+```bash
+API=${API:-http://localhost:3000}
+CODE=${CODE:-EAT-001-P02}     # an unused enrollment code of the seeded study
+DEVICE=${DEVICE:-OLM-DEMO-01} # a device from `npm run db:seed`
+dir=$(mktemp -d)
+
+# 1. Enroll: the token authenticates every later call.
+TOKEN=$(curl -sf -X POST "$API/api/v1/enrollments" -H 'content-type: application/json' -d "{\"code\":\"$CODE\"}" | jq -r .participant_token)
+
+# 2. A tiny session: five files, a 4 s range (the video is not decoded by the server until the worker runs).
+T=$(date -u +%s); FROM=$(date -u -r $((T-3600)) +%Y-%m-%dT%H:%M:%SZ); TO=$(date -u -r $((T-3596)) +%Y-%m-%dT%H:%M:%SZ); E=$((T-3600))
+printf 'fake video bytes %s' "$RANDOM$RANDOM" > "$dir/video"
+printf 'seq,rtc_epoch_ms,uptime_ms,bytes\n1,%s000,0,10\n2,%s500,500,10\n3,%s000,1000,10\n' $E $E $((E+1)) > "$dir/frames"
+printf 'rtc_epoch,uptime_ms,temp_c,rh_pct,mq7,mq2,sound_p2p,batt_mv\n%s,0,22.5,50,300,400,500,7400\n' $E > "$dir/sensors"
+printf 'rtc_epoch,uptime_ms,type,value\n%s,0,BOOT,\n' $E > "$dir/events"
+ID=$(uuidgen | tr A-Z a-z)
+printf '{"manifest_version":"0","upload_id":"%s","excluded_intervals":[]}' "$ID" > "$dir/manifest"
+meta() { printf '{"kind":"%s","sha256":"%s","bytes":%s,"content_type":"%s"}' "$1" "$(shasum -a 256 "$dir/$1" | cut -d' ' -f1)" "$(wc -c < "$dir/$1" | tr -d ' ')" "$2"; }
+FILES="[$(meta video video/mp4),$(meta frames text/csv),$(meta sensors text/csv),$(meta events text/csv),$(meta manifest application/json)]"
+
+# 3. Register the upload and PUT each file to its presigned URL.
+RESP=$(curl -sf -X POST "$API/api/v1/uploads" -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d "{\"upload_id\":\"$ID\",\"device_id\":\"$DEVICE\",\"firmware_version\":\"0.1.0\",\"device_session_id\":\"walk-$ID\",\"recorded_from\":\"$FROM\",\"recorded_to\":\"$TO\",\"files\":$FILES}")
+for kind in video frames sensors events manifest; do
+  case $kind in video) ctype=video/mp4;; manifest) ctype=application/json;; *) ctype=text/csv;; esac
+  curl -sf -X PUT "$(jq -r ".files[]|select(.kind==\"$kind\")|.put_url" <<<"$RESP")" -H "content-type: $ctype" --data-binary "@$dir/$kind"
+done
+
+# 4. Complete, then read the status.
+curl -sf -X POST "$API/api/v1/uploads/$ID/complete" -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"excluded_intervals":[]}'; echo
+curl -sf "$API/api/v1/uploads/$ID" -H "authorization: Bearer $TOKEN"; echo
+```
 
 ## Android
 
@@ -57,7 +94,7 @@ Render only deploys from repos you own: set up the personal mirror described in 
 
 ## Session pipeline (`process_session`)
 
-The worker turns an uploaded session video into observations (`worker/src/process-session/`). Until object storage is wired, it reads `<LOCAL_MEDIA_DIR>/<upload_id>/video.mp4` and `frames.csv`; the declared video and frame timeline hashes must match the bundle.
+The worker turns an uploaded session video into observations (`worker/src/process-session/`). It downloads `video.mp4` and `frames.csv` from object storage (the `S3_*` vars), or reads `<LOCAL_MEDIA_DIR>/<upload_id>/video.mp4` and `frames.csv` when `LOCAL_MEDIA_DIR` is set; the declared video and frame timeline hashes must match the bundle.
 
 ```bash
 npm test -w worker            # unit + DB tests, Claude mocked (DB tests need a migrated, seeded DATABASE_URL)

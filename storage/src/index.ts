@@ -22,6 +22,8 @@ export interface StorageConfig {
   bucket: string;
   accessKeyId: string;
   secretAccessKey: string;
+  /** Host the phone reaches the bucket at, when it differs from `endpoint` (e.g. `http://10.0.2.2:9000` from an Android emulator). Presigned URLs are signed against it. */
+  publicEndpoint?: string;
 }
 
 export interface ObjectInfo {
@@ -59,34 +61,38 @@ export function storageConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Stor
     bucket: env.S3_BUCKET!,
     accessKeyId: env.S3_ACCESS_KEY_ID!,
     secretAccessKey: env.S3_SECRET_ACCESS_KEY!,
+    publicEndpoint: env.S3_PUBLIC_ENDPOINT || undefined,
   };
 }
 
 export function createStorage(config: StorageConfig = storageConfigFromEnv()): Storage {
   const { bucket } = config;
-  const client = new S3Client({
-    endpoint: config.endpoint,
-    region: config.region,
-    credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
-    // MinIO on localhost needs path-style URLs; B2 accepts them too.
-    forcePathStyle: true,
-    // The SDK's default CRC32 checksums would be baked into presigned PUTs (for an empty body) and B2 rejects
-    // some of them; integrity is checked with the client's sha256 instead (ADR 0002 §3).
-    requestChecksumCalculation: "WHEN_REQUIRED",
-    responseChecksumValidation: "WHEN_REQUIRED",
-  });
+  const newClient = (endpoint: string) =>
+    new S3Client({
+      endpoint,
+      region: config.region,
+      credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
+      // MinIO on localhost needs path-style URLs; B2 accepts them too.
+      forcePathStyle: true,
+      // The SDK's default CRC32 checksums would be baked into presigned PUTs (for an empty body) and B2 rejects
+      // some of them; integrity is checked with the client's sha256 instead (ADR 0002 §3).
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
+    });
+  const client = newClient(config.endpoint);
+  const signer = config.publicEndpoint ? newClient(config.publicEndpoint) : client;
 
   return {
     bucket,
     presignPut: (key, { contentType, contentLength, expiresIn = DEFAULT_URL_TTL_SECONDS } = {}) =>
       getSignedUrl(
-        client,
+        signer,
         new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: contentType, ContentLength: contentLength }),
         { expiresIn },
       ),
 
     presignGet: (key, { expiresIn = DEFAULT_URL_TTL_SECONDS } = {}) =>
-      getSignedUrl(client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn }),
+      getSignedUrl(signer, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn }),
 
     async head(key) {
       try {

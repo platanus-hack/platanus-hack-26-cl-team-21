@@ -91,6 +91,11 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/observatorio
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: olm-media
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -104,6 +109,14 @@ jobs:
         run: npm run build -w web
       - name: Migrate
         run: npm run db:migrate
+      # The upload route tests PUT real objects. `services:` can't pass MinIO's `server /data` command, so run it here
+      # (same image as docker-compose.yml) and create the bucket with the SDK that `npm ci` installed.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+            cgr.dev/chainguard/minio@sha256:e9cf6b99c226e9539ed0f14b6f00e37b07da153c7ba1f4f8709c807574b471ec server /data
+          for i in $(seq 1 30); do curl -sf http://localhost:9000/minio/health/ready && break; sleep 1; done
+          node -e 'const {S3Client,CreateBucketCommand}=require("@aws-sdk/client-s3");new S3Client({endpoint:process.env.S3_ENDPOINT,region:process.env.S3_REGION,credentials:{accessKeyId:process.env.S3_ACCESS_KEY_ID,secretAccessKey:process.env.S3_SECRET_ACCESS_KEY},forcePathStyle:true}).send(new CreateBucketCommand({Bucket:process.env.S3_BUCKET})).then(()=>console.log("bucket ready"))'
       - name: Route tests
         run: npm run test -w web
 
