@@ -73,6 +73,10 @@ curl -sf -X POST "$API/api/v1/uploads/$ID/complete" -H "authorization: Bearer $T
 curl -sf "$API/api/v1/uploads/$ID" -H "authorization: Bearer $TOKEN"; echo
 ```
 
+## Evaluation
+
+`npm run eval -- --truth <annotations> --upload <upload_id>` scores a pipeline run against ground truth (precision, recall, F1, count and time error, coverage, run-to-run consistency); `npm run eval:test` runs its tests. Annotation format and options: [`data/README.md`](data/README.md).
+
 ## Android
 
 Open `android/` in Android Studio and run it on the emulator. Debug builds call the mock backend at `http://10.0.2.2:4010`: start it with `npm run mock:api` (enrollment and upload API v0; codes `EAT-001-P01`…`P03` work, `EAT-001-P00` is already used; see [`tools/mock-api/README.md`](tools/mock-api/README.md)). For the real backend: `./gradlew installDebug -PapiBaseUrl=http://10.0.2.2:3000` (the host's `npm run dev:web`) or `-PapiBaseUrl=https://...`.

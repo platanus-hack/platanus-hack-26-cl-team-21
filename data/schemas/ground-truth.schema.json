@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://observatorio.local/schemas/ground-truth.schema.json",
+  "title": "Ground truth annotations",
+  "description": "What one independent annotator labels from the script or the full footage of a demo session (AGENTS.md §6): the eating and drinking episodes. data/eval reads it (also as a CSV with start and end columns) and scores a pipeline run against it. Times are ISO 8601 with an offset. Episodes the pipeline could not observe (privacy switch, excluded clip) are still annotated: the evaluation sets them aside using the coverage intervals.",
+  "type": "object",
+  "required": ["annotator", "episodes"],
+  "additionalProperties": false,
+  "properties": {
+    "annotator": { "type": "string", "minLength": 1, "description": "Pseudonymous id of the annotator, e.g. a-01." },
+    "session": { "type": "string", "description": "The upload_id or device_session_id the annotation is about." },
+    "episodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["start", "end"],
+        "additionalProperties": false,
+        "properties": {
+          "start": { "type": "string", "format": "date-time", "description": "When the episode starts, with an offset." },
+          "end": { "type": "string", "format": "date-time", "description": "When it ends, after start." },
+          "kind": { "type": "string", "description": "Optional label such as meal, snack or drink." },
+          "note": { "type": "string" }
+        }
+      }
+    }
+  }
+}
