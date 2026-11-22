@@ -21,6 +21,7 @@ jobs:
       storage: ${{ steps.filter.outputs.storage }}
       worker: ${{ steps.filter.outputs.worker }}
       mock-api: ${{ steps.filter.outputs.mock-api }}
+      data: ${{ steps.filter.outputs.data }}
       android: ${{ steps.filter.outputs.android }}
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +65,10 @@ jobs:
             mock-api:
               - *workflow
               - tools/mock-api/**
+            data:
+              - *workflow
+              - *npm
+              - data/**
             android:
               - *workflow
               - android/app/**
@@ -223,6 +228,23 @@ jobs:
           node-version: 24
       - name: Tests
         run: node --test tools/mock-api/server.test.mjs
+
+  data:
+    needs: changes
+    if: needs.changes.outputs.data == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run eval:typecheck
+      - name: Evaluation tests
+        run: npm run eval:test
 
   android:
     needs: changes
