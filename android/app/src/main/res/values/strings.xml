@@ -142,9 +142,15 @@
     <string name="send_failed">No pudimos enviar. Inténtalo de nuevo.</string>
 
     <!-- Clip detail -->
-    <string name="clip_preview_unavailable">Vista previa no disponible</string>
-    <string name="clip_preview_caption">Imagen al inicio de la selección · %1$s</string>
-    <string name="clip_preview_description">Imagen de la grabación al inicio de la selección</string>
+    <string name="video_preparing">Preparando el video…</string>
+    <string name="video_preparing_progress">Imágenes descargadas del colgante: %1$d de %2$d</string>
+    <string name="video_no_clock">Esta grabación no tiene hora, así que no se puede armar su video.</string>
+    <string name="video_failed">No pudimos preparar el video. Revisa que el colgante esté cerca y en la misma red.</string>
+    <string name="video_retry">Reintentar</string>
+    <string name="video_play">Reproducir</string>
+    <string name="video_play_span">Ver tramo</string>
+    <string name="video_pause">Pausar</string>
+    <string name="video_fast">×4</string>
     <string name="clip_no_clock">Esta grabación no tiene hora porque el reloj del colgante no estaba sincronizado. Puedes excluirla, pero no aprobarla para enviar.</string>
     <string name="clip_exclude_range_title">Excluir un tramo</string>
     <string name="clip_exclude_range_hint">Elige el tramo que no quieres compartir.</string>
